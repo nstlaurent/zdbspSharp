@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31919.166
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "zdbspSharp", "zdbspSharp\zdbspSharp.csproj", "{7801B261-6E04-42BF-901E-2408BE0CC57D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "zdbsp", "zdbsp\zdbsp.csproj", "{57E9C12F-7E80-4182-AC25-D1FB1EA4CFBA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7801B261-6E04-42BF-901E-2408BE0CC57D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7801B261-6E04-42BF-901E-2408BE0CC57D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7801B261-6E04-42BF-901E-2408BE0CC57D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7801B261-6E04-42BF-901E-2408BE0CC57D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{57E9C12F-7E80-4182-AC25-D1FB1EA4CFBA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{57E9C12F-7E80-4182-AC25-D1FB1EA4CFBA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{57E9C12F-7E80-4182-AC25-D1FB1EA4CFBA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{57E9C12F-7E80-4182-AC25-D1FB1EA4CFBA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8653C97F-8AAD-4696-B7FB-B9D62EAFF5AE}
+	EndGlobalSection
+EndGlobal
