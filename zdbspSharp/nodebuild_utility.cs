@@ -86,6 +86,7 @@ public sealed class FVertexMap
 
 	int GetBlock(int x, int y)
 	{
-		return (int)((((uint)x - (uint)MinX) >> BLOCK_SHIFT) + (((uint)y - (uint)MinY) >> BLOCK_SHIFT) * BlocksWide);
+		int block = (int)((((uint)x - (uint)MinX) >> BLOCK_SHIFT) + (((uint)y - (uint)MinY) >> BLOCK_SHIFT) * BlocksWide);
+		return Math.Clamp(block, 0, VertexGrid.Length - 1);
 	}
 }
