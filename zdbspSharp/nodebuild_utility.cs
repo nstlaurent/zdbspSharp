@@ -57,7 +57,7 @@ public sealed class FVertexMap
 	}
 
 	//[LocalsInit(false)]
-	int InsertVertex(FPrivVert vert)
+	unsafe int InsertVertex(FPrivVert vert)
 	{
 		int vertnum;
 
@@ -73,9 +73,9 @@ public sealed class FVertexMap
 		int miny = Math.Max(MinY, vert.y - VERTEX_EPSILON);
 		int maxy = Math.Min(MaxY, vert.y + VERTEX_EPSILON);
 
-		int[] blk = new int[]{ GetBlock(minx, miny), GetBlock(maxx, miny), GetBlock(minx, maxy), GetBlock(maxx, maxy) };
-		int[] blkcount = new int[]{ VertexGrid[blk[0]].Count, VertexGrid[blk[1]].Count, VertexGrid[blk[2]].Count, VertexGrid[blk[3]].Count };
-		for (int i = 0; i < 4; ++i)
+		var blk = stackalloc int[4] { GetBlock(minx, miny), GetBlock(maxx, miny), GetBlock(minx, maxy), GetBlock(maxx, maxy) };
+		var blkcount = stackalloc int[4] { VertexGrid[blk[0]].Count, VertexGrid[blk[1]].Count, VertexGrid[blk[2]].Count, VertexGrid[blk[3]].Count };
+        for (int i = 0; i < 4; ++i)
 		{
 			if (VertexGrid[blk[i]].Count == blkcount[i])
 				VertexGrid[blk[i]].Add(vertnum);
