@@ -7,6 +7,7 @@
 	<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	<Title>zdbsp sharp</Title>
 	<RepositoryUrl>https://github.com/nstlaurent/zdbspSharp</RepositoryUrl>
+	  <Version>1.0.1</Version>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
