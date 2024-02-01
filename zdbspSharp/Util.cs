@@ -41,6 +41,14 @@ static class Util
         return ByteToArrayStruct<T>(data);
     }
 
+    public static byte[] ReadLumpBytes(FWadReader wad, int index)
+    {
+        wad.ReadStream.Seek(wad.Lumps[index].FilePos, SeekOrigin.Begin);
+        byte[] data = new byte[wad.Lumps[index].Size];
+        wad.ReadStream.Read(data, 0, wad.Lumps[index].Size);
+        return data;
+    }
+
     public static T ReadStuctureFromStream<T>(Stream stream) where T : struct
     {
         byte[] bytes = new byte[Marshal.SizeOf(typeof(T))];

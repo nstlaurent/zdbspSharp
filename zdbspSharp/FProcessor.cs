@@ -197,55 +197,53 @@ public sealed class FProcessor
 		Level.RejectSize = (Level.NumSectors() * Level.NumSectors() + 7) / 8;
 		Level.Reject = null;
 
-		//FRejectBuilder reject = new FRejectBuilder(Level);
-		//Level.Reject = reject.GetReject();
+		switch (m_options.RejectMode)
+		{
+			case ERejectMode.ERM_Rebuild:
+			//FRejectBuilder reject(Level);
+			//Level.Reject = reject.GetReject();
+			//printf("   Rebuilding the reject is unsupported.\n");
+			// Intentional fall-through
 
-		//switch (RejectMode)
-		//{
-		//	case ERejectMode.ERM_Rebuild:
-		//	//FRejectBuilder reject(Level);
-		//	//Level.Reject = reject.GetReject();
-		//	//printf("   Rebuilding the reject is unsupported.\n");
-		//	// Intentional fall-through
+			case ERejectMode.ERM_DontTouch:
+				{
+					int lump = Wad.FindMapLump("REJECT", Lump);
 
-		//	case ERejectMode.ERM_DontTouch:
-		//		{
-		//			int lump = Wad.FindMapLump("REJECT", Lump);
+					if (lump >= 0)
+					{
+                        Level.Reject = Util.ReadLumpBytes(Wad, lump);
+						Level.RejectSize = Level.Reject.Length;
 
-		//			if (lump >= 0)
-		//			{
-		//				ReadLump<byte>(Wad, lump, Level.Reject, Level.RejectSize);
-		//				if (Level.RejectSize != (Level.NumOrgSectors * Level.NumOrgSectors + 7) / 8)
-		//				{
-		//					// If the reject is the wrong size, don't use it.
-		//					Level.Reject = null;
-		//					Level.Reject = null;
-		//					if (Level.RejectSize != 0)
-		//					{ // Do not warn about 0-length rejects
-		//						printf("   REJECT is the wrong size, so it will be removed.\n");
-		//					}
-		//					Level.RejectSize = 0;
-		//				}
-		//				else if (Level.NumOrgSectors != Level.NumSectors())
-		//				{
-		//					// Some sectors have been removed, so fix the reject.
-		//					byte[] newreject = FixReject(Level.Reject);
-		//					Level.Reject = null;
-		//					Level.Reject = newreject;
-		//					Level.RejectSize = (Level.NumSectors() * Level.NumSectors() + 7) / 8;
-		//				}
-		//			}
-		//		}
-		//		break;
+                        if (Level.RejectSize != (Level.NumOrgSectors * Level.NumOrgSectors + 7) / 8)
+						{
+							// If the reject is the wrong size, don't use it.
+							Level.Reject = null;
+							Level.Reject = null;
+							if (Level.RejectSize != 0)
+							{ // Do not warn about 0-length rejects
+								//printf("   REJECT is the wrong size, so it will be removed.\n");
+							}
+							Level.RejectSize = 0;
+						}
+						else if (Level.NumOrgSectors != Level.NumSectors())
+						{
+							// Some sectors have been removed, so fix the reject.
+							byte[] newreject = FixReject(Level.Reject);
+							Level.Reject = null;
+							Level.Reject = newreject;
+							Level.RejectSize = (Level.NumSectors() * Level.NumSectors() + 7) / 8;
+						}
+					}
+				}
+				break;
 
-		//	case ERejectMode.ERM_Create0:
-		//		break;
+			case ERejectMode.ERM_Create0:
+				break;
 
-		//	case ERejectMode.ERM_CreateZeroes:
-		//		Level.Reject = new byte[Level.RejectSize];
-		//		//memset(Level.Reject, 0, Level.RejectSize);
-		//		break;
-		//}
+			case ERejectMode.ERM_CreateZeroes:
+				Level.Reject = new byte[Level.RejectSize];
+				break;
+		}
 	}
 
 	private void WriteAll(FWadWriter writer)
@@ -638,25 +636,20 @@ public sealed class FProcessor
 
 	private byte[] FixReject(byte[] oldreject)
 	{
-		int ox;
-		int oy;
-		int pnum;
-		int opnum;
 		int rejectSize = (Level.NumSectors() * Level.NumSectors() + 7) / 8;
 		byte[] newreject = new byte[rejectSize];
 
 		for (int y = 0; y < Level.NumSectors(); ++y)
 		{
-			oy = (int)Level.OrgSectorMap[y];
+			int oy = (int)Level.OrgSectorMap[y];
 			for (int x = 0; x < Level.NumSectors(); ++x)
 			{
-				ox = (int)Level.OrgSectorMap[x];
-				pnum = y * Level.NumSectors() + x;
-				opnum = oy * Level.NumSectors() + ox;
+				int ox = (int)Level.OrgSectorMap[x];
+				int pnum = y * Level.NumSectors() + x;
+				int opnum = oy * Level.NumOrgSectors + ox;
 
-				if ((oldreject[opnum >> 3] & (1 << (opnum & 7))) != 0)
-                    newreject[pnum >> 3] |= (byte)(1 << (pnum & 7));
-			}
+                newreject[pnum >> 3] |= (byte)(oldreject[opnum >> 3] & (1 << (opnum & 7)));
+            }
 		}
 		return newreject;
 	}
