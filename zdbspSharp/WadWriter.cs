@@ -125,7 +125,7 @@ public sealed class FWadWriter : IDisposable
 
 	public void WriteByte(byte val)
 	{
-		byte[] data = BitConverter.GetBytes(val);
+		byte[] data = BitConverter.GetBytes((short)val);
 		AddToLump(data, data.Length);
 	}
 }

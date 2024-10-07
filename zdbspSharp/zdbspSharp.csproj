@@ -1,13 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <IsAotCompatible>true</IsAotCompatible>
 	<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	<Title>zdbsp sharp</Title>
 	<RepositoryUrl>https://github.com/nstlaurent/zdbspSharp</RepositoryUrl>
-	 <Version>1.0.2</Version>
+	 <Version>1.0.3</Version>
 	 <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
   </PropertyGroup>
 
