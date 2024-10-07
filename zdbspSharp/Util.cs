@@ -1,4 +1,5 @@
 ﻿using System.Runtime.InteropServices;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
 namespace zdbspSharp;
@@ -25,12 +26,16 @@ static class Util
             dest[i] = source[i];
     }
 
-    public static T[] ReadMapLump<T>(FWadReader wad, string name, int index) where T : struct
+    public static T[] ReadMapLump<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>
+        (FWadReader wad, string name, int index) where T : struct
     {
 	    return ReadLump<T>(wad, wad.FindMapLump(name, index));
     }
 
-    public static T[] ReadLump<T>(FWadReader wad, int index) where T : struct
+    public static T[] ReadLump<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>
+        (FWadReader wad, int index) where T : struct
     {
         if (index >= wad.Header.NumLumps)
             return Array.Empty<T>();
@@ -49,13 +54,15 @@ static class Util
         return data;
     }
 
-    public static T ReadStuctureFromStream<T>(Stream stream) where T : struct
+    public static T ReadStuctureFromStream<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>
+        (Stream stream) where T : struct
     {
-        byte[] bytes = new byte[Marshal.SizeOf(typeof(T))];
+        byte[] bytes = new byte[Marshal.SizeOf<T>()];
         ReadStream(stream, bytes, bytes.Length);
 
         GCHandle handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-        T obj = (T)Marshal.PtrToStructure(handle.AddrOfPinnedObject(), typeof(T));
+        T obj = Marshal.PtrToStructure<T>(handle.AddrOfPinnedObject());
         handle.Free();
         return obj;
     }
@@ -85,7 +92,7 @@ static class Util
 
     public static byte[] StructArrayToBytes<T>(T[] data) where T : struct
     {
-        int structSize = Marshal.SizeOf(typeof(T));
+        int structSize = Marshal.SizeOf<T>();
         byte[] structBytes = new byte[structSize * data.Length];
 
         for (int i = 0; i < data.Length; i++)
@@ -93,15 +100,17 @@ static class Util
         return structBytes;
     }
 
-    public static T[] ByteToArrayStruct<T>(byte[] data) where T : struct
+    public static T[] ByteToArrayStruct<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>
+        (byte[] data) where T : struct
     {
-        int structSize = Marshal.SizeOf(typeof(T));
+        int structSize = Marshal.SizeOf<T>();
         T[] arr = new T[data.Length / structSize];
         for (int i = 0; i < arr.Length; i++)
         {
             byte[] bytes = data.Skip(structSize * i).Take(structSize).ToArray();
             GCHandle handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-            T obj = (T)Marshal.PtrToStructure(handle.AddrOfPinnedObject(), typeof(T));
+            T obj = Marshal.PtrToStructure<T>(handle.AddrOfPinnedObject());
             handle.Free();
             arr[i] = obj;
         }
