@@ -24,10 +24,10 @@ public static class Box
 	public const int BOXRIGHT = 3;
 }
 
-public unsafe struct UDMFKey
+public struct UDMFKey
 {
-	public readonly string key;
-	public readonly string value;
+	public string key;
+	public string value;
 }
 
 [StructLayout(LayoutKind.Sequential)]

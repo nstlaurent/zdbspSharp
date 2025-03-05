@@ -1,16 +1,21 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
-
 namespace zdbspSharp;
 
 public sealed class FProcessor
 {
-	private readonly FLevel Level = new();
+    readonly ref struct Property(ReadOnlySpan<char> name, ReadOnlySpan<char> value)
+    {
+        public readonly ReadOnlySpan<char> Name = name;
+        public readonly ReadOnlySpan<char> Value = value;
+    }
+
+    private readonly FLevel Level = new();
 
 	private readonly List<FPolyStart> PolyStarts = new();
 	private readonly List<FPolyStart> PolyAnchors = new();
 
-	private readonly bool Extended;
+	private bool Extended;
 	private readonly bool isUDMF;
 
 	private readonly FWadReader Wad;
@@ -30,8 +35,7 @@ public sealed class FProcessor
 		if (isUDMF)
 		{
 			Extended = false;
-			// TODO
-			//LoadUDMF();
+			LoadUDMF(Lump + 1);
 		}
 		else
 		{
@@ -59,12 +63,171 @@ public sealed class FProcessor
 
 			if (m_options.BuildNodes)
 				GetPolySpots();
-
-			Level.FindMapBounds();
+            Level.FindMapBounds();
 		}
 	}
 
-	public void Write(FWadWriter writer)
+	private int TextMapLump;
+
+    private void LoadUDMF(int lump)
+    {
+        DynamicArray<WideVertex> Vertices = new(2048);
+
+        TextMapLump = lump;
+        var buffer = Util.ReadLumpBytes(Wad, lump);
+		var text = System.Text.Encoding.UTF8.GetString(buffer);
+
+        var parser = new SimpleParser();
+		parser.Parse(text);
+		ParseMapProperties(parser);
+
+        while (!parser.IsDone())
+        {
+			var item = parser.ConsumeStringSpan();
+			parser.Consume('{');
+            if (item.EqualsIgnoreCase("thing"))
+            {
+				Level.Things.EnsureCapacity(Level.Things.Length + 1);
+                ref var th = ref Level.Things.Data[Level.Things.Length];
+				ConsumeBlock(parser);
+                Level.Things.Length++;
+            }
+            else if (item.EqualsIgnoreCase("linedef"))
+            {
+				Level.Lines.EnsureCapacity(Level.Lines.Length + 1);
+                ref var ld = ref Level.Lines.Data[Level.Lines.Length];
+                ParseLinedef(parser, ref ld);
+				Level.Lines.Length++;
+            }
+            else if (item.EqualsIgnoreCase("sidedef"))
+            {
+				Level.Sides.EnsureCapacity(Level.Sides.Length + 1);
+                ref var sd = ref Level.Sides.Data[Level.Sides.Length];
+                ParseSidedef(parser, ref sd);
+				Level.Sides.Length++;
+            }
+            else if (item.EqualsIgnoreCase("sector"))
+            {
+				Level.Sectors.EnsureCapacity(Level.Sectors.Length + 1);
+                ref var sec = ref Level.Sectors.Data[Level.Sectors.Length];
+                ConsumeBlock(parser);
+				Level.Sectors.Length++;
+            }
+            else if (item.EqualsIgnoreCase("vertex"))
+            {
+				Vertices.EnsureCapacity(Vertices.Length + 1);
+                ref var vt = ref Vertices.Data[Vertices.Length];
+				Level.VertexProps.EnsureCapacity(Level.VertexProps.Length + 1);
+                ref var vtp = ref Level.VertexProps.Data[Level.VertexProps.Length];
+                vt.index = Vertices.Length;
+                Level.VertexProps.Length++;
+                Vertices.Length++;
+                ParseVertex(parser, ref vt, ref vtp);
+            }
+			parser.Consume('}');
+        }
+        
+		Level.Vertices = new WideVertex[Vertices.Length];
+        Level.NumVertices = Vertices.Length;
+
+		for (int i = 0; i <  Vertices.Length; i++)
+			Level.Vertices[i] = Vertices[i];
+    }
+
+    private void ParseMapProperties(SimpleParser parser)
+    {
+        parser.ConsumeString("namespace");
+        parser.Consume('=');
+        var ns = parser.ConsumeString();
+        parser.Consume(';');
+        Extended = ns.EqualsIgnoreCase("ZDoom") || ns.EqualsIgnoreCase("Hexen") || ns.EqualsIgnoreCase("Vavoom");
+    }
+
+    private static void ConsumeBlock(SimpleParser parser)
+    {
+        while (parser.PeekString() != "}")
+            parser.ConsumeLineSpan();
+    }
+
+    private static void ParseSidedef(SimpleParser parser, ref IntSideDef sd)
+    {
+        sd.sector = Constants.MAX_INT;
+        while (!IsBlockComplete(parser))
+        {
+            var prop = ParseProperty(parser);
+            if (prop.Name.EqualsIgnoreCase("sector"))
+            {
+                sd.sector = parser.ParseInt(prop.Value);
+            }
+        }
+    }
+
+    private static void ParseVertex(SimpleParser parser, ref WideVertex vt, ref IntVertex vtp)
+    {
+        while (!IsBlockComplete(parser))
+        {
+            var prop = ParseProperty(parser);
+            if (prop.Name.EqualsIgnoreCase("x"))
+            {
+                vt.x = (int)(parser.ParseDouble(prop.Value) * (1 << 16));
+            }
+            else if (prop.Name.EqualsIgnoreCase("y"))
+            {
+                vt.y = (int)(parser.ParseDouble(prop.Value) * (1 << 16));
+            }
+        }
+    }
+
+    private unsafe void ParseLinedef(SimpleParser parser, ref IntLineDef ld)
+    {
+        ld.v1 = ld.v2 = ld.sidenum[0] = ld.sidenum[1] = Constants.MAX_INT;
+        ld.special = 0;
+        while (!IsBlockComplete(parser))
+        {
+			var prop = ParseProperty(parser);
+            if (prop.Name.EqualsIgnoreCase("v1"))
+            {
+                ld.v1 = parser.ParseInt(prop.Value);
+                continue;   // do not store in props
+            }
+            else if (prop.Name.EqualsIgnoreCase("v2"))
+            {
+				ld.v2 = parser.ParseInt(prop.Value);
+                continue;   // do not store in props
+            }
+            else if (Extended && prop.Name.EqualsIgnoreCase("special"))
+            {
+                ld.special = parser.ParseInt(prop.Value);
+            }
+            else if (Extended && prop.Name.EqualsIgnoreCase("arg0"))
+            {
+                ld.args[0] = parser.ParseInt(prop.Value);
+            }
+            if (prop.Name.EqualsIgnoreCase("sidefront"))
+            {
+                ld.sidenum[0] = parser.ParseInt(prop.Value);
+                continue;   // do not store in props
+            }
+            else if (prop.Name.EqualsIgnoreCase("sideback"))
+            {
+                ld.sidenum[1] = parser.ParseInt(prop.Value);
+                continue;   // do not store in props
+            }
+        }
+    }
+
+    private static Property ParseProperty(SimpleParser parser)
+    {
+        var type = parser.ConsumeStringSpan();
+        parser.Consume('=');
+        var value = parser.ConsumeStringSpan();
+        parser.Consume(';');
+        return new(type, value);
+    }
+
+    private static bool IsBlockComplete(SimpleParser parser) => parser.Peek('}');
+
+    public void Write(FWadWriter writer)
     {
         if (Level.NumLines() == 0 || Level.NumSides() == 0 || Level.NumSectors() == 0 || Level.NumVertices == 0)
         {
@@ -87,12 +250,6 @@ public sealed class FProcessor
         bool compressGL;
         bool gl5 = false;
 
-		if (isUDMF)
-        {
-			// Not Supported
-			return;
-        }
- 
         if (Level.GLNodes != null)
         {
             gl5 = m_options.V5GLNodes || (Level.GLVertices.Length > 32767) || (Level.GLSegs.Length > 65534) || (Level.GLNodes.Length > 32767) || (Level.GLSubsectors.Length > 32767);
@@ -105,11 +262,19 @@ public sealed class FProcessor
             compressGL = false;
         }
 
+        if (isUDMF)
+        {
+            writer.CopyLump(Wad, Lump);
+            writer.CopyLump(Wad, TextMapLump);
+			WriteGLData(writer, compressGL, gl5);
+            return;
+        }
+
         // If the GL nodes are compressed, then the regular nodes must also be compressed.
         compress = m_options.CompressNodes || compressGL || (Level.NumVertices > 65535) || (Level.Segs.Length > 65535) || (Level.Subsectors.Length > 32767) || (Level.Nodes.Length > 32767);
 
-		writer.CopyLump(Wad, Lump);
-		writer.CopyLump(Wad, Wad.FindMapLump("THINGS", Lump));
+        writer.CopyLump(Wad, Lump);
+        writer.CopyLump(Wad, Wad.FindMapLump("THINGS", Lump));
         WriteLines(writer);
         WriteSides(writer);
         WriteVertices(writer, compress || m_options.GLOnly ? Level.NumOrgVerts : Level.NumVertices);
@@ -128,12 +293,12 @@ public sealed class FProcessor
                 {
                     writer.CreateLabel("SEGS");
                     writer.CreateLabel("SSECTORS");
-					writer.CreateLabel("NODES");
+                    writer.CreateLabel("NODES");
                 }
             }
             else
             {
-				writer.CreateLabel("SEGS");
+                writer.CreateLabel("SEGS");
                 if (compressGL)
                 {
                     if (m_options.ForceCompression)
@@ -143,7 +308,7 @@ public sealed class FProcessor
                 }
                 else
                 {
-					writer.CreateLabel("SSECTORS");
+                    writer.CreateLabel("SSECTORS");
                 }
                 if (!m_options.GLOnly)
                 {
@@ -154,7 +319,7 @@ public sealed class FProcessor
                 }
                 else
                 {
-					writer.CreateLabel("NODES");
+                    writer.CreateLabel("NODES");
                 }
             }
         }
@@ -162,7 +327,7 @@ public sealed class FProcessor
         {
             writer.CopyLump(Wad, Wad.FindMapLump("SEGS", Lump));
             writer.CopyLump(Wad, Wad.FindMapLump("SSECTORS", Lump));
-			writer.CopyLump(Wad, Wad.FindMapLump("NODES", Lump));
+            writer.CopyLump(Wad, Wad.FindMapLump("NODES", Lump));
         }
 
         WriteSectors(writer);
@@ -172,13 +337,18 @@ public sealed class FProcessor
         if (Extended)
         {
             writer.CopyLump(Wad, Wad.FindMapLump("BEHAVIOR", Lump));
-			writer.CopyLump(Wad, Wad.FindMapLump("SCRIPTS", Lump));
+            writer.CopyLump(Wad, Wad.FindMapLump("SCRIPTS", Lump));
         }
 
+        WriteGLData(writer, compressGL, gl5);
+    }
+
+    private void WriteGLData(FWadWriter writer, bool compressGL, bool gl5)
+    {
         if (Level.GLNodes != null && !compressGL)
         {
             string glname = "GL_" + Wad.LumpName(Lump);
-			writer.CreateLabel(glname);
+            writer.CreateLabel(glname);
             WriteGLVertices(writer, gl5);
             WriteGLSegs(writer, gl5);
             WriteGLSSect(writer, gl5);

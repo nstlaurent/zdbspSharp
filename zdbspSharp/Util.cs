@@ -1,6 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
+using System.Runtime.CompilerServices;
 
 namespace zdbspSharp;
 
@@ -192,4 +193,10 @@ static class Util
     public static int LittleLong(long x) => (int)x;
     public static short LittleShort(short x) => x;
     public static ushort LittleShort(ushort x) => x;
+
+    public static void ZeroArray<T>(T[] array, int length) where T : struct
+    {
+        ref var reference = ref MemoryMarshal.GetArrayDataReference(array);
+        Unsafe.InitBlockUnaligned(ref Unsafe.As<T, byte>(ref reference), 0, (uint)(Marshal.SizeOf<T>() * length));
+    }
 }

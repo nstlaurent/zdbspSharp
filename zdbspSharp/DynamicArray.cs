@@ -3,7 +3,7 @@
 public class DynamicArray<T>
 {
 
-    public int Length { get; private set; }
+    public int Length { get; set; }
 
     public T[] Data { get; private set; }
 
@@ -137,7 +137,7 @@ public class DynamicArray<T>
         return data;
     }
 
-    private void EnsureCapacity(int desiredCapacity)
+    public void EnsureCapacity(int desiredCapacity)
     {
         if (desiredCapacity <= Capacity)
             return;

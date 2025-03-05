@@ -21,4 +21,6 @@ public static class StringExtensions
 
     public static bool EqualsIgnoreCase(this string str, string other) => 
         str.Equals(other, StringComparison.OrdinalIgnoreCase);
+    public static bool EqualsIgnoreCase(this ReadOnlySpan<char> str, string other) =>
+        str.Equals(other, StringComparison.OrdinalIgnoreCase);
 }
