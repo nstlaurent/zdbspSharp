@@ -2,15 +2,18 @@
 
 public static class StringExtensions
 {
-    public static int strnicmp(string string1, string string2, int n)
+    public static bool strnicmp(byte[] string1, string string2, int n)
     {
-        for (int i = 0; i < n && i < string1.Length; i++)
+        for (int i = 0; i < n && i < string2.Length; i++)
         {
-            if (char.ToLowerInvariant(string1[i]) != char.ToLowerInvariant(string2[i]))
-                return string1[i] - string2[i];
+            if (string1[i] == 0)
+                return false;
+
+            if (char.ToLowerInvariant((char)string1[i]) != char.ToLowerInvariant(string2[i]))
+                return false;
         }
 
-        return 0;
+        return true;
     }
 
     public static void CopyString(byte[] dest, string str, int length)

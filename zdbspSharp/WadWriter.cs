@@ -1,8 +1,10 @@
-﻿namespace zdbspSharp;
+﻿using System.Text;
+
+namespace zdbspSharp;
 
 public sealed class FWadWriter : IDisposable
 {
-	private readonly List<WadLump> Lumps = new();
+	private readonly DynamicArray<WadLump> Lumps = new();
 	private readonly Stream WriteStream;
 
 	public FWadWriter(Stream stream, bool iwad)
@@ -36,8 +38,8 @@ public sealed class FWadWriter : IDisposable
 	{
 		WadLump lump = new();
 
-		StringExtensions.CopyString(lump._Name, name, 8);
-		lump.FilePos = Util.LittleLong(WriteStream.Position);
+		StringExtensions.CopyString(lump.Name, name, 8);
+		lump.FilePos = (int)WriteStream.Position;
 		lump.Size = 0;
 		Lumps.Add(lump);
 	}
@@ -45,10 +47,9 @@ public sealed class FWadWriter : IDisposable
 	public void WriteLump(string name, byte[] data, int len)
 	{
 		WadLump lump = new WadLump();
-
-		StringExtensions.CopyString(lump._Name, name, 8);
-		lump.FilePos = Util.LittleLong(WriteStream.Position);
-		lump.Size = Util.LittleLong(len);
+		StringExtensions.CopyString(lump.Name, name, 8);
+		lump.FilePos = (int)WriteStream.Position;
+		lump.Size = len;
 		Lumps.Add(lump);
 
 		WriteStream.Write(data, 0, len);
@@ -67,12 +68,8 @@ public sealed class FWadWriter : IDisposable
 	{
 		if (WriteStream != null)
 		{
-			int[] head = new int[2];
-
-			head[0] = Util.LittleLong(Lumps.Count);
-			head[1] = Util.LittleLong(WriteStream.Position);
-
-			for (int i = 0; i < Lumps.Count; i++)
+			int[] head = [Lumps.Length, (int)WriteStream.Position];
+            for (int i = 0; i < Lumps.Length; i++)
 			{
 				byte[] data = Util.StructureToBytes(Lumps[i]);
 				WriteStream.Write(data, 0, data.Length);
@@ -90,14 +87,25 @@ public sealed class FWadWriter : IDisposable
 		CreateLabel(name);
 	}
 
-	public void AddToLump(byte[] data, int len)
+    public void AddToLump(byte[] data)
+    {
+        WriteStream.Write(data, 0, data.Length);
+        ref WadLump lump = ref Lumps.Data[Lumps.Length - 1];
+        lump.Size += data.Length;
+    }
+
+    public void AddToLump(byte[] data, int len)
 	{
 		WriteStream.Write(data, 0, len);
-		WadLump lump = Lumps[^1];
+		ref WadLump lump = ref Lumps.Data[Lumps.Length - 1];
 		lump.Size += len;
-
-		Lumps[^1] = lump;
 	}
+
+	public void AddToLump(string str)
+	{
+		var data = Encoding.UTF8.GetBytes(str);
+		AddToLump(data, data.Length);
+    }
 
 	public void WriteShort(short val)
 	{

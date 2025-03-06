@@ -40,18 +40,18 @@ public struct WadLump
 	public int FilePos = 0;
 	public int Size = 0;
 	[MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-	public byte[] _Name = new byte[8];
+	public byte[] Name = new byte[8];
 
-	public string Name
-	{
-		get
-		{
-			int index = Array.IndexOf(_Name, (byte)0);
-			if (index > 8 || index < 0)
-				index = 8;
-			return System.Text.Encoding.UTF8.GetString(_Name, 0, index);
-		}
-	}
+	//public string Name
+	//{
+	//	get
+	//	{
+	//		int index = Array.IndexOf(_Name, (byte)0);
+	//		if (index > 8 || index < 0)
+	//			index = 8;
+	//		return System.Text.Encoding.UTF8.GetString(_Name, 0, index);
+	//	}
+	//}
 }
 
 public sealed class FWadReader : IDisposable
@@ -72,20 +72,11 @@ public sealed class FWadReader : IDisposable
 			throw new Exception("Input file is not a wad");
 		}
 
-		Header.NumLumps = Util.LittleLong(Header.NumLumps);
-		Header.Directory = Util.LittleLong(Header.Directory);
-
 		ReadStream.Seek(Header.Directory, SeekOrigin.Begin);
 
 		Lumps = new WadLump[Header.NumLumps];
 		for (int i = 0; i < Header.NumLumps; i++)
 			Lumps[i] = Util.ReadStuctureFromStream<WadLump>(ReadStream);
-
-		for (int i = 0; i < Header.NumLumps; ++i)
-		{
-			Lumps[i].FilePos = Util.LittleLong(Lumps[i].FilePos);
-			Lumps[i].Size = Util.LittleLong(Lumps[i].Size);
-		}
 	}
 
 	public void Dispose()
@@ -108,7 +99,7 @@ public sealed class FWadReader : IDisposable
 		if (index >= Lumps.Length)
 			return false;
 
-		if (StringExtensions.strnicmp(Lumps[index].Name, "TEXTMAP", 8) == 0)
+		if (StringExtensions.strnicmp(Lumps[index].Name, "TEXTMAP", 8))
 			return true;
 
 		return false;
@@ -121,7 +112,7 @@ public sealed class FWadReader : IDisposable
 
 		for (; index < Header.NumLumps; ++index)
 		{
-			if (StringExtensions.strnicmp(Lumps[index].Name, name, 8) == 0)
+			if (StringExtensions.strnicmp(Lumps[index].Name, name, 8))
 				return index;
 		}
 
@@ -137,7 +128,7 @@ public sealed class FWadReader : IDisposable
 
 		for (i = 0; i < 12; ++i)
 		{
-			if (StringExtensions.strnicmp(Constants.MapLumpNames[i], name, 8) == 0)
+			if (Constants.MapLumpNames[i].EqualsIgnoreCase(name))
 				break;
 		}
 		if (i == 12)
@@ -151,7 +142,7 @@ public sealed class FWadReader : IDisposable
 			if (map + k >= Lumps.Length)
 				break;
 
-			if (StringExtensions.strnicmp(Lumps[map + k].Name, Constants.MapLumpNames[j], 8) == 0)
+			if (StringExtensions.strnicmp(Lumps[map + k].Name, Constants.MapLumpNames[j], 8))
 			{
 				if (i == j)
 					return map + k;
@@ -170,7 +161,7 @@ public sealed class FWadReader : IDisposable
 
 		for (i = 0; i < 5; ++i)
 		{
-			if (StringExtensions.strnicmp(Lumps[glheader + i].Name, name, 8) == 0)
+			if (StringExtensions.strnicmp(Lumps[glheader + i].Name, name, 8))
 				break;
 		}
 		if (i == 5)
@@ -180,7 +171,7 @@ public sealed class FWadReader : IDisposable
 
 		for (j = k = 0; j < 5; ++j)
 		{
-			if (StringExtensions.strnicmp(Lumps[glheader + k].Name, Constants.GLLumpNames[j], 8) == 0)
+			if (StringExtensions.strnicmp(Lumps[glheader + k].Name, Constants.GLLumpNames[j], 8))
 			{
 				if (i == j)
 					return glheader + k;
@@ -192,10 +183,14 @@ public sealed class FWadReader : IDisposable
 
 	public string LumpName(int lump)
 	{
-		return Lumps[lump].Name;
+		var data = Lumps[lump].Name;
+		int index = Array.IndexOf(data, (byte)0);
+		if (index > 8 || index < 0)
+			index = 8;
+		return System.Text.Encoding.UTF8.GetString(data, 0, index);
 	}
 
-	public bool IsMap(int index)
+    public bool IsMap(int index)
 	{
 		int i;
 		int j;
@@ -211,7 +206,7 @@ public sealed class FWadReader : IDisposable
 			if (index + j >= Lumps.Length)
 				return true;
 
-			if (StringExtensions.strnicmp(Lumps[index + j].Name, Constants.MapLumpNames[i], 8) != 0)
+			if (!StringExtensions.strnicmp(Lumps[index + j].Name, Constants.MapLumpNames[i], 8))
 			{
 				if (Constants.MapLumpRequired[i])
 					return false;
@@ -235,7 +230,7 @@ public sealed class FWadReader : IDisposable
 		index++;
 		for (int i = 0; i < 4; ++i)
 		{
-			if (StringExtensions.strnicmp(Lumps[i + index].Name, Constants.GLLumpNames[i], 8) != 0)
+			if (!StringExtensions.strnicmp(Lumps[i + index].Name, Constants.GLLumpNames[i], 8))
 				return false;
 		}
 		return true;
@@ -246,7 +241,7 @@ public sealed class FWadReader : IDisposable
 		index++;
 		for (int i = 0; i < 5 && index < Header.NumLumps; ++i, ++index)
 		{
-			if (StringExtensions.strnicmp(Lumps[index].Name, Constants.GLLumpNames[i], 8) != 0)
+			if (!StringExtensions.strnicmp(Lumps[index].Name, Constants.GLLumpNames[i], 8))
 			{
 				break;
 			}
@@ -282,7 +277,7 @@ public sealed class FWadReader : IDisposable
 		{
 			// UDMF map
 			i += 2;
-			while (StringExtensions.strnicmp(Lumps[i].Name, "ENDMAP", 8) != 0 && i < Header.NumLumps)
+			while (!StringExtensions.strnicmp(Lumps[i].Name, "ENDMAP", 8) && i < Header.NumLumps)
 				i++;
 			return i + 1; // one lump after ENDMAP
 		}
@@ -296,7 +291,7 @@ public sealed class FWadReader : IDisposable
 				continue;
             }
 
-			if (StringExtensions.strnicmp(Lumps[i + k].Name, Constants.MapLumpNames[j], 8) != 0)
+			if (!StringExtensions.strnicmp(Lumps[i + k].Name, Constants.MapLumpNames[j], 8))
 			{
 				if (Constants.MapLumpRequired[j])
 					break;

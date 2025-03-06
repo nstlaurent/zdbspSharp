@@ -39,11 +39,11 @@ static class Util
         (FWadReader wad, int index) where T : struct
     {
         if (index >= wad.Header.NumLumps)
-            return Array.Empty<T>();
+            return [];
 
         wad.ReadStream.Seek(wad.Lumps[index].FilePos, SeekOrigin.Begin);
         byte[] data = new byte[wad.Lumps[index].Size];
-        wad.ReadStream.Read(data, 0, wad.Lumps[index].Size);
+        wad.ReadStream.ReadExactly(data, 0, wad.Lumps[index].Size);
         return ByteToArrayStruct<T>(data);
     }
 
@@ -51,7 +51,7 @@ static class Util
     {
         wad.ReadStream.Seek(wad.Lumps[index].FilePos, SeekOrigin.Begin);
         byte[] data = new byte[wad.Lumps[index].Size];
-        wad.ReadStream.Read(data, 0, wad.Lumps[index].Size);
+        wad.ReadStream.ReadExactly(data, 0, wad.Lumps[index].Size);
         return data;
     }
 
@@ -187,12 +187,6 @@ static class Util
     {
         return (int)((a * b + c * d) / 4294967296.0);
     }
-
-    public static int LittleLong(int x) => x;
-    public static uint LittleLong(uint x) => x;
-    public static int LittleLong(long x) => (int)x;
-    public static short LittleShort(short x) => x;
-    public static ushort LittleShort(ushort x) => x;
 
     public static void ZeroArray<T>(T[] array, int length) where T : struct
     {

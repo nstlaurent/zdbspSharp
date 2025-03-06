@@ -269,7 +269,10 @@ internal class SimpleParser
     private void AddToken(int startIndex, int currentIndex, int lineCount, bool quotedString)
     {
         if (quotedString)
-            startIndex++;
+        {
+            startIndex--;
+            currentIndex++;
+        }
 
         // Always add empty string if in quotes
         if (quotedString || startIndex != currentIndex)
@@ -279,7 +282,10 @@ internal class SimpleParser
     private void AddToken(int startIndex, int startLine, int endLine, int endIndex, bool quotedString)
     {
         if (quotedString)
-            startIndex++;
+        {
+            startIndex--;
+            endIndex++;
+        }
 
         m_tokens.Add(new ParserToken(startLine, startIndex, endIndex, endLine, endIndex));
     }
