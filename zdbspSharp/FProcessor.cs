@@ -1,16 +1,22 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
-
+using System.Text;
 namespace zdbspSharp;
 
 public sealed class FProcessor
 {
-	private readonly FLevel Level = new();
+    readonly ref struct Property(ReadOnlySpan<char> name, ReadOnlySpan<char> value)
+    {
+        public readonly ReadOnlySpan<char> Name = name;
+        public readonly ReadOnlySpan<char> Value = value;
+    }
+
+    private readonly FLevel Level = new();
 
 	private readonly List<FPolyStart> PolyStarts = new();
 	private readonly List<FPolyStart> PolyAnchors = new();
 
-	private readonly bool Extended;
+	private bool Extended;
 	private readonly bool isUDMF;
 
 	private readonly FWadReader Wad;
@@ -30,8 +36,7 @@ public sealed class FProcessor
 		if (isUDMF)
 		{
 			Extended = false;
-			// TODO
-			//LoadUDMF();
+			LoadUDMF(Lump + 1);
 		}
 		else
 		{
@@ -59,12 +64,196 @@ public sealed class FProcessor
 
 			if (m_options.BuildNodes)
 				GetPolySpots();
-
-			Level.FindMapBounds();
+            Level.FindMapBounds();
 		}
 	}
 
-	public void Write(FWadWriter writer)
+    private void LoadUDMF(int lump)
+    {
+        DynamicArray<WideVertex> Vertices = new(2048);
+
+        var text = Encoding.UTF8.GetString(Util.ReadLumpBytes(Wad, lump));
+        var parser = new SimpleParser();
+		parser.Parse(text);
+		ParseMapProperties(parser);
+
+        while (!parser.IsDone())
+        {
+			var item = parser.ConsumeStringSpan();
+			parser.Consume('{');
+            if (item.EqualsIgnoreCase("thing"))
+            {
+				Level.Things.EnsureCapacity(Level.Things.Length + 1);
+                ref var th = ref Level.Things.Data[Level.Things.Length];
+				ParseThing(parser, ref th);
+                Level.Things.Length++;
+            }
+            else if (item.EqualsIgnoreCase("linedef"))
+            {
+				Level.Lines.EnsureCapacity(Level.Lines.Length + 1);
+                ref var ld = ref Level.Lines.Data[Level.Lines.Length];
+                ParseLinedef(parser, ref ld);
+				Level.Lines.Length++;
+            }
+            else if (item.EqualsIgnoreCase("sidedef"))
+            {
+				Level.Sides.EnsureCapacity(Level.Sides.Length + 1);
+                ref var sd = ref Level.Sides.Data[Level.Sides.Length];
+                ParseSidedef(parser, ref sd);
+				Level.Sides.Length++;
+            }
+            else if (item.EqualsIgnoreCase("sector"))
+            {
+				Level.Sectors.EnsureCapacity(Level.Sectors.Length + 1);
+                ref var sec = ref Level.Sectors.Data[Level.Sectors.Length];
+				ParseSector(parser, ref sec);
+                Level.Sectors.Length++;
+            }
+            else if (item.EqualsIgnoreCase("vertex"))
+            {
+				Vertices.EnsureCapacity(Vertices.Length + 1);
+                ref var vt = ref Vertices.Data[Vertices.Length];
+				Level.VertexProps.EnsureCapacity(Level.VertexProps.Length + 1);
+                ref var vtp = ref Level.VertexProps.Data[Level.VertexProps.Length];
+                vt.index = Vertices.Length;
+                Level.VertexProps.Length++;
+                Vertices.Length++;
+                ParseVertex(parser, ref vt, ref vtp);
+            }
+			parser.Consume('}');
+        }
+        
+		Level.Vertices = new WideVertex[Vertices.Length];
+        Level.NumVertices = Vertices.Length;
+
+		for (int i = 0; i <  Vertices.Length; i++)
+			Level.Vertices[i] = Vertices[i];
+    }
+
+    private void ParseMapProperties(SimpleParser parser)
+    {
+        parser.ConsumeString("namespace");
+        parser.Consume('=');
+        var ns = parser.ConsumeStringSpan();
+        parser.Consume(';');
+        Extended = ns.EqualsIgnoreCase("\"ZDoom\"") || ns.EqualsIgnoreCase("\"Hexen") || ns.EqualsIgnoreCase("\"Vavoom\"");
+    }
+
+    private static void ConsumeBlock(SimpleParser parser)
+    {
+        while (parser.PeekString() != "}")
+            parser.ConsumeLineSpan();
+    }
+
+    private static void ParseThing(SimpleParser parser, ref IntThing th)
+    {
+        th.props ??= [];
+        while (!IsBlockComplete(parser))
+        {
+            var prop = ParseProperty(parser);
+            th.props.Add(new(prop.Name.ToString(), prop.Value.ToString()));
+        }
+    }
+
+    private static void ParseSector(SimpleParser parser, ref IntSector sec)
+    {
+        sec.props ??= [];
+        while (!IsBlockComplete(parser))
+        {
+            var prop = ParseProperty(parser);
+            sec.props.Add(new(prop.Name.ToString(), prop.Value.ToString()));
+        }
+    }
+
+    private static void ParseSidedef(SimpleParser parser, ref IntSideDef sd)
+    {
+        sd.sector = Constants.MAX_INT;
+        while (!IsBlockComplete(parser))
+        {
+            var prop = ParseProperty(parser);
+            if (prop.Name.EqualsIgnoreCase("sector"))
+            {
+                sd.sector = parser.ParseInt(prop.Value);
+				continue;
+            }
+
+            sd.props ??= [];
+            sd.props.Add(new(prop.Name.ToString(), prop.Value.ToString()));
+        }
+    }
+
+    private static void ParseVertex(SimpleParser parser, ref WideVertex vt, ref IntVertex vtp)
+    {
+		vtp.props = [];
+        while (!IsBlockComplete(parser))
+        {
+            var prop = ParseProperty(parser);
+            if (prop.Name.EqualsIgnoreCase("x"))
+            {
+                vt.x = (int)(parser.ParseDouble(prop.Value) * (1 << 16));
+            }
+            else if (prop.Name.EqualsIgnoreCase("y"))
+            {
+                vt.y = (int)(parser.ParseDouble(prop.Value) * (1 << 16));
+            }
+
+			vtp.props.Add(new(prop.Name.ToString(), prop.Value.ToString()));
+        }
+    }
+
+    private unsafe void ParseLinedef(SimpleParser parser, ref IntLineDef ld)
+    {
+        ld.v1 = ld.v2 = ld.sidenum[0] = ld.sidenum[1] = Constants.MAX_INT;
+        ld.special = 0;
+        while (!IsBlockComplete(parser))
+        {
+			var prop = ParseProperty(parser);
+            if (prop.Name.EqualsIgnoreCase("v1"))
+            {
+                ld.v1 = parser.ParseInt(prop.Value);
+                continue;   // do not store in props
+            }
+            else if (prop.Name.EqualsIgnoreCase("v2"))
+            {
+				ld.v2 = parser.ParseInt(prop.Value);
+                continue;   // do not store in props
+            }
+            else if (Extended && prop.Name.EqualsIgnoreCase("special"))
+            {
+                ld.special = parser.ParseInt(prop.Value);
+            }
+            else if (Extended && prop.Name.EqualsIgnoreCase("arg0"))
+            {
+                ld.args[0] = parser.ParseInt(prop.Value);
+            }
+            if (prop.Name.EqualsIgnoreCase("sidefront"))
+            {
+                ld.sidenum[0] = parser.ParseInt(prop.Value);
+                continue;   // do not store in props
+            }
+            else if (prop.Name.EqualsIgnoreCase("sideback"))
+            {
+                ld.sidenum[1] = parser.ParseInt(prop.Value);
+                continue;   // do not store in props
+            }
+
+			ld.props ??= [];
+			ld.props.Add(new(prop.Name.ToString(), prop.Value.ToString()));
+		}
+    }
+
+    private static Property ParseProperty(SimpleParser parser)
+    {
+        var type = parser.ConsumeStringSpan();
+        parser.Consume('=');
+        var value = parser.ConsumeStringSpan();
+        parser.Consume(';');
+        return new(type, value);
+    }
+
+    private static bool IsBlockComplete(SimpleParser parser) => parser.Peek('}');
+
+    public void Write(FWadWriter writer)
     {
         if (Level.NumLines() == 0 || Level.NumSides() == 0 || Level.NumSectors() == 0 || Level.NumVertices == 0)
         {
@@ -87,12 +276,6 @@ public sealed class FProcessor
         bool compressGL;
         bool gl5 = false;
 
-		if (isUDMF)
-        {
-			// Not Supported
-			return;
-        }
- 
         if (Level.GLNodes != null)
         {
             gl5 = m_options.V5GLNodes || (Level.GLVertices.Length > 32767) || (Level.GLSegs.Length > 65534) || (Level.GLNodes.Length > 32767) || (Level.GLSubsectors.Length > 32767);
@@ -105,11 +288,19 @@ public sealed class FProcessor
             compressGL = false;
         }
 
+        if (isUDMF)
+        {
+            writer.CopyLump(Wad, Lump);
+			WriteUDMF(writer);
+			WriteGLData(writer, compressGL, gl5);
+            return;
+        }
+
         // If the GL nodes are compressed, then the regular nodes must also be compressed.
         compress = m_options.CompressNodes || compressGL || (Level.NumVertices > 65535) || (Level.Segs.Length > 65535) || (Level.Subsectors.Length > 32767) || (Level.Nodes.Length > 32767);
 
-		writer.CopyLump(Wad, Lump);
-		writer.CopyLump(Wad, Wad.FindMapLump("THINGS", Lump));
+        writer.CopyLump(Wad, Lump);
+        writer.CopyLump(Wad, Wad.FindMapLump("THINGS", Lump));
         WriteLines(writer);
         WriteSides(writer);
         WriteVertices(writer, compress || m_options.GLOnly ? Level.NumOrgVerts : Level.NumVertices);
@@ -128,12 +319,12 @@ public sealed class FProcessor
                 {
                     writer.CreateLabel("SEGS");
                     writer.CreateLabel("SSECTORS");
-					writer.CreateLabel("NODES");
+                    writer.CreateLabel("NODES");
                 }
             }
             else
             {
-				writer.CreateLabel("SEGS");
+                writer.CreateLabel("SEGS");
                 if (compressGL)
                 {
                     if (m_options.ForceCompression)
@@ -143,7 +334,7 @@ public sealed class FProcessor
                 }
                 else
                 {
-					writer.CreateLabel("SSECTORS");
+                    writer.CreateLabel("SSECTORS");
                 }
                 if (!m_options.GLOnly)
                 {
@@ -154,7 +345,7 @@ public sealed class FProcessor
                 }
                 else
                 {
-					writer.CreateLabel("NODES");
+                    writer.CreateLabel("NODES");
                 }
             }
         }
@@ -162,7 +353,7 @@ public sealed class FProcessor
         {
             writer.CopyLump(Wad, Wad.FindMapLump("SEGS", Lump));
             writer.CopyLump(Wad, Wad.FindMapLump("SSECTORS", Lump));
-			writer.CopyLump(Wad, Wad.FindMapLump("NODES", Lump));
+            writer.CopyLump(Wad, Wad.FindMapLump("NODES", Lump));
         }
 
         WriteSectors(writer);
@@ -172,13 +363,123 @@ public sealed class FProcessor
         if (Extended)
         {
             writer.CopyLump(Wad, Wad.FindMapLump("BEHAVIOR", Lump));
-			writer.CopyLump(Wad, Wad.FindMapLump("SCRIPTS", Lump));
+            writer.CopyLump(Wad, Wad.FindMapLump("SCRIPTS", Lump));
         }
 
+        WriteGLData(writer, compressGL, gl5);
+    }
+
+    private void WriteUDMF(FWadWriter writer)
+    {
+		writer.StartWritingLump("TEXTMAP");
+		// TODO actually write namespace
+		writer.AddToLump("namespace = zdoom;");
+
+		for (int i = 0; i < Level.Things.Length; i++)
+			WriteThingUDMF(writer, ref Level.Things.Data[i]);
+
+		for (int i = 0; i < Level.NumOrgVerts; i++)
+		{
+			ref var vt = ref Level.Vertices[i];
+			WriteVertexUDMF(writer, ref Level.VertexProps.Data[vt.index], i);
+		}
+
+		for (int i = 0; i < Level.Lines.Length; i++)
+			WriteLineUDMF(writer, ref Level.Lines.Data[i]);
+
+		for (int i = 0; i < Level.Sides.Length; i++)
+			WriteSideUDMF(writer, ref Level.Sides.Data[i]);
+
+        for (int i = 0; i < Level.Sectors.Length; i++)
+            WriteSectorUDMF(writer, ref Level.Sectors.Data[i]);
+    }
+
+
+    private static readonly byte[] StartBrace = Encoding.UTF8.GetBytes("\n{\n");
+    private static readonly byte[] EndBrace = Encoding.UTF8.GetBytes("\n}\n");
+	private static readonly byte[] EqualsBytes = Encoding.UTF8.GetBytes(" = ");
+    private static readonly byte[] Semicolon = Encoding.UTF8.GetBytes(";\n");
+	private static readonly byte[] ThingBytes = Encoding.UTF8.GetBytes("thing");
+    private static readonly byte[] VertexBytes = Encoding.UTF8.GetBytes("vertex");
+    private static readonly byte[] LinedefBytes = Encoding.UTF8.GetBytes("linedef");
+    private static readonly byte[] SidedefBytes = Encoding.UTF8.GetBytes("sidedef");
+    private static readonly byte[] SectorBytes = Encoding.UTF8.GetBytes("sector");
+
+
+    private static void WriteSectorUDMF(FWadWriter writer, ref IntSector s)
+    {
+        writer.AddToLump(SectorBytes);
+        writer.AddToLump(StartBrace);
+        WriteProps(writer, s.props);
+        writer.AddToLump(EndBrace);
+    }
+
+    private static void WriteSideUDMF(FWadWriter writer, ref IntSideDef sd)
+    {
+        writer.AddToLump(SidedefBytes);
+        writer.AddToLump(StartBrace);
+        WriteIntProp(writer, "sector", sd.sector);
+        WriteProps(writer, sd.props);
+        writer.AddToLump(EndBrace);
+    }
+
+    private unsafe void WriteLineUDMF(FWadWriter writer, ref IntLineDef ld)
+    {
+        writer.AddToLump(LinedefBytes);
+        writer.AddToLump(StartBrace);
+        WriteIntProp(writer, "v1", ld.v1);
+        WriteIntProp(writer, "v2", ld.v2);
+		if (ld.sidenum[0] != Constants.MAX_INT)
+			WriteIntProp(writer, "sidefront", ld.sidenum[0]);
+        if (ld.sidenum[1] != Constants.MAX_INT)
+            WriteIntProp(writer, "sideback", ld.sidenum[1]);
+        WriteProps(writer, ld.props);
+        writer.AddToLump(EndBrace);
+    }
+
+    private static void WriteVertexUDMF(FWadWriter writer, ref IntVertex v, int num)
+    {
+        writer.AddToLump(VertexBytes);
+        writer.AddToLump(StartBrace);
+        WriteProps(writer, v.props);
+        writer.AddToLump(EndBrace);
+    }
+
+    private static void WriteThingUDMF(FWadWriter writer, ref IntThing th)
+    {
+		writer.AddToLump(ThingBytes);
+		writer.AddToLump(StartBrace);
+        WriteProps(writer, th.props);
+        writer.AddToLump(EndBrace);
+    }
+
+    private static void WriteProps(FWadWriter writer, List<UDMFKey>? props)
+    {
+		if (props == null)
+			return;
+
+		for (int i = 0; i < props.Count; i++)
+		{
+			writer.AddToLump(props[i].key);
+			writer.AddToLump(EqualsBytes);
+			writer.AddToLump(props[i].value);
+            writer.AddToLump(Semicolon);
+        }
+    }
+    private static void WriteIntProp(FWadWriter writer, string name, int value)
+    {
+        writer.AddToLump(name);
+        writer.AddToLump(EqualsBytes);
+        writer.AddToLump(value.ToString());
+        writer.AddToLump(Semicolon);
+    }
+
+    private void WriteGLData(FWadWriter writer, bool compressGL, bool gl5)
+    {
         if (Level.GLNodes != null && !compressGL)
         {
             string glname = "GL_" + Wad.LumpName(Lump);
-			writer.CreateLabel(glname);
+            writer.CreateLabel(glname);
             WriteGLVertices(writer, gl5);
             WriteGLSegs(writer, gl5);
             WriteGLSSect(writer, gl5);
@@ -361,12 +662,12 @@ public sealed class FProcessor
 			{
 				IntThing thing = new IntThing();
 				thing.thingid = Things[i].thingid;
-				thing.x = Util.LittleShort(Things[i].x) << Constants.FRACBITS;
-				thing.y = Util.LittleShort(Things[i].y) << Constants.FRACBITS;
-				thing.z = Util.LittleShort(Things[i].z);
-				thing.angle = Util.LittleShort(Things[i].angle);
-				thing.type = Util.LittleShort(Things[i].type);
-				thing.flags = Util.LittleShort(Things[i].flags);
+				thing.x = Things[i].x << Constants.FRACBITS;
+				thing.y = Things[i].y << Constants.FRACBITS;
+				thing.z = Things[i].z;
+				thing.angle = Things[i].angle;
+				thing.type = Things[i].type;
+				thing.flags = Things[i].flags;
 				thing.special = Things[i].special;
 				thing.args[0] = Things[i].args[0];
 				thing.args[1] = Things[i].args[1];
@@ -382,11 +683,11 @@ public sealed class FProcessor
 			for (int i = 0; i < mt.Length; ++i)
 			{
 				IntThing thing = new IntThing();
-				thing.x = Util.LittleShort(mt[i].x) << Constants.FRACBITS;
-				thing.y = Util.LittleShort(mt[i].y) << Constants.FRACBITS;
-				thing.angle = Util.LittleShort(mt[i].angle);
-				thing.type = Util.LittleShort(mt[i].type);
-				thing.flags = Util.LittleShort(mt[i].flags);
+				thing.x = mt[i].x << Constants.FRACBITS;
+				thing.y = mt[i].y << Constants.FRACBITS;
+				thing.angle = mt[i].angle;
+				thing.type = mt[i].type;
+				thing.flags = mt[i].flags;
 				thing.z = 0;
 				thing.special = 0;
 				thing.args[0] = 0;
@@ -413,11 +714,11 @@ public sealed class FProcessor
 				line.args[2] = Lines[i].args[2];
 				line.args[3] = Lines[i].args[3];
 				line.args[4] = Lines[i].args[4];
-				line.v1 = Util.LittleShort(Lines[i].v1);
-				line.v2 = Util.LittleShort(Lines[i].v2);
-				line.flags = Util.LittleShort(Lines[i].flags);
-				line.sidenum[0] = Util.LittleShort(Lines[i].sidenum[0]);
-				line.sidenum[1] = Util.LittleShort(Lines[i].sidenum[1]);
+				line.v1 = Lines[i].v1;
+				line.v2 = Lines[i].v2;
+				line.flags = Lines[i].flags;
+				line.sidenum[0] = Lines[i].sidenum[0];
+				line.sidenum[1] = Lines[i].sidenum[1];
 				if (line.sidenum[0] == Constants.NO_MAP_INDEX)
 					line.sidenum[0] = Constants.MAX_INT;
 				if (line.sidenum[1] == Constants.NO_MAP_INDEX)
@@ -431,11 +732,11 @@ public sealed class FProcessor
 			for (int i = 0; i < ml.Length; ++i)
 			{
 				IntLineDef line = new IntLineDef();
-				line.v1 = Util.LittleShort(ml[i].v1);
-				line.v2 = Util.LittleShort(ml[i].v2);
-				line.flags = Util.LittleShort(ml[i].flags);
-				line.sidenum[0] = Util.LittleShort(ml[i].sidenum[0]);
-				line.sidenum[1] = Util.LittleShort(ml[i].sidenum[1]);
+				line.v1 = ml[i].v1;
+				line.v2 = ml[i].v2;
+				line.flags = ml[i].flags;
+				line.sidenum[0] = ml[i].sidenum[0];
+				line.sidenum[1] = ml[i].sidenum[1];
 				if (line.sidenum[0] == Constants.NO_MAP_INDEX)
 					line.sidenum[0] = Constants.MAX_INT;
 				if (line.sidenum[1] == Constants.NO_MAP_INDEX)
@@ -443,8 +744,8 @@ public sealed class FProcessor
 
 				// Store the special and tag in the args array so we don't lose them
 				line.special = 0;
-				line.args[0] = Util.LittleShort(ml[i].special);
-				line.args[1] = Util.LittleShort(ml[i].tag);
+				line.args[0] = ml[i].special;
+				line.args[1] = ml[i].tag;
 				Level.Lines.Add(line);
 			}
 		}
@@ -463,8 +764,8 @@ public sealed class FProcessor
 			{
 				fixed (MapVertex* vertex = &verts[i])
 				{
-					setVertex->x = Util.LittleShort(vertex->x) << Constants.FRACBITS;
-					setVertex->y = Util.LittleShort(vertex->y) << Constants.FRACBITS;
+					setVertex->x = vertex->x << Constants.FRACBITS;
+					setVertex->y = vertex->y << Constants.FRACBITS;
 					setVertex->index = 0; // we don't need this value for non-UDMF maps
 				}
 			}
@@ -487,7 +788,7 @@ public sealed class FProcessor
 					Util.ByteCopy(newSide->bottomtexture, side->bottomtexture, 8);
 					Util.ByteCopy(newSide->midtexture, side->midtexture, 8);
 
-					newSide->sector = Util.LittleShort(side->sector);
+					newSide->sector = side->sector;
 					if (newSide->sector == Constants.NO_MAP_INDEX)
 						newSide->sector = Constants.MAX_INT;
 				}
@@ -591,7 +892,7 @@ public sealed class FProcessor
 
 			for (int i = 0; i < 2; ++i)
 			{
-				child = Util.LittleShort(nodes[x].children[i]);
+				child = nodes[x].children[i];
 				if ((child & Constants.NF_SUBSECTOR) != 0)
 					Nodes[x].children[i] = child + (Constants.NFX_SUBSECTOR - Constants.NF_SUBSECTOR);
 				else
@@ -609,8 +910,8 @@ public sealed class FProcessor
 		MapSubsectorEx[] data = new MapSubsectorEx[Level.Subsectors.Length];
 		for (int x = 0; x < count; ++x)
 		{
-			data[x].numlines = Util.LittleShort(ssec[x].numlines);
-			data[x].firstline = Util.LittleShort(ssec[x].firstline);
+			data[x].numlines = (ssec[x].numlines);
+			data[x].firstline = ssec[x].firstline;
 		}
 
 		return data;
@@ -624,11 +925,11 @@ public sealed class FProcessor
 		MapSegGLEx[] data = new MapSegGLEx[count];
 		for (int x = 0; x < count; ++x)
 		{
-			data[x].v1 = Util.LittleShort(segs[x].v1);
-			data[x].v2 = Util.LittleShort(segs[x].v2);
-			data[x].linedef = Util.LittleShort(segs[x].linedef);
-			data[x].side = Util.LittleShort(segs[x].side);
-			data[x].partner = Util.LittleShort(segs[x].partner);
+			data[x].v1 = segs[x].v1;
+			data[x].v2 = segs[x].v2;
+			data[x].linedef = segs[x].linedef;
+			data[x].side = segs[x].side;
+			data[x].partner = segs[x].partner;
 		}
 
 		return data;
@@ -679,11 +980,11 @@ public sealed class FProcessor
 						setLine->args[2] = (byte)line->args[2];
 						setLine->args[3] = (byte)line->args[3];
 						setLine->args[4] = (byte)line->args[4];
-						setLine->v1 = Util.LittleShort((ushort)(line->v1));
-						setLine->v2 = Util.LittleShort((ushort)(line->v2));
-						setLine->flags = (short)Util.LittleShort((ushort)(line->flags));
-						setLine->sidenum[0] = Util.LittleShort((ushort)(line->sidenum[0]));
-						setLine->sidenum[1] = Util.LittleShort((ushort)(line->sidenum[1]));
+						setLine->v1 = (ushort)(line->v1);
+						setLine->v2 = (ushort)(line->v2);
+						setLine->flags = (short)(ushort)(line->flags);
+						setLine->sidenum[0] = (ushort)(line->sidenum[0]);
+						setLine->sidenum[1] = (ushort)(line->sidenum[1]);
 					}
 				}
 			}
@@ -699,13 +1000,13 @@ public sealed class FProcessor
 				{
 					fixed (IntLineDef* line = &Level.Lines.Data[i])
 					{
-						setLine->v1 = Util.LittleShort((ushort)(line->v1));
-						setLine->v2 = Util.LittleShort((ushort)(line->v2));
-						setLine->flags = (short)Util.LittleShort((ushort)(line->flags));
-						setLine->sidenum[0] = Util.LittleShort((ushort)(line->sidenum[0]));
-						setLine->sidenum[1] = Util.LittleShort((ushort)(line->sidenum[1]));
-						setLine->special = (short)Util.LittleShort((ushort)(line->args[0]));
-						setLine->tag = (short)Util.LittleShort((ushort)(line->args[1]));
+						setLine->v1 = (ushort)line->v1;
+						setLine->v2 = (ushort)line->v2;
+						setLine->flags = (short)line->flags;
+						setLine->sidenum[0] = (ushort)line->sidenum[0];
+						setLine->sidenum[1] = (ushort)line->sidenum[1];
+						setLine->special = (short)line->args[0];
+						setLine->tag = (short)line->args[1];
 					}
 				}
 			}
@@ -721,8 +1022,8 @@ public sealed class FProcessor
 
 		for (int i = 0; i < count; ++i)
 		{
-			verts[i * 2] = (short)Util.LittleShort((ushort)(vertdata[i].x >> Constants.FRACBITS));
-			verts[i * 2 + 1] = (short)Util.LittleShort((ushort)(vertdata[i].y >> Constants.FRACBITS));
+			verts[i * 2] = (short)(vertdata[i].x >> Constants.FRACBITS);
+			verts[i * 2 + 1] = (short)(vertdata[i].y >> Constants.FRACBITS);
 		}
 
 		byte[] data = Util.StructArrayToBytes(verts);
@@ -771,7 +1072,7 @@ public sealed class FProcessor
 					Util.ByteCopy(setSide->toptexture, side->toptexture, 8);
 					Util.ByteCopy(setSide->bottomtexture, side->bottomtexture, 8);
 					Util.ByteCopy(setSide->midtexture, side->midtexture, 8);
-					setSide->sector = Util.LittleShort((ushort)side->sector);
+					setSide->sector = (ushort)side->sector;
 				}
 			}
 		}
@@ -787,12 +1088,12 @@ public sealed class FProcessor
 
 		for (int i = 0; i < Level.Segs.Length; ++i)
 		{
-			segdata[i].v1 = Util.LittleShort((ushort)(Level.Segs[i].v1));
-			segdata[i].v2 = Util.LittleShort((ushort)(Level.Segs[i].v2));
-			segdata[i].angle = Util.LittleShort(Level.Segs[i].angle);
-			segdata[i].linedef = Util.LittleShort(Level.Segs[i].linedef);
-			segdata[i].side = Util.LittleShort(Level.Segs[i].side);
-			segdata[i].offset = Util.LittleShort(Level.Segs[i].offset);
+			segdata[i].v1 = (ushort)Level.Segs[i].v1;
+			segdata[i].v2 = (ushort)Level.Segs[i].v2;
+			segdata[i].angle = Level.Segs[i].angle;
+			segdata[i].linedef = Level.Segs[i].linedef;
+			segdata[i].side = Level.Segs[i].side;
+			segdata[i].offset = Level.Segs[i].offset;
 		}
 
 		byte[] data = Util.StructArrayToBytes(segdata);
@@ -825,13 +1126,13 @@ public sealed class FProcessor
 		int count = Level.Blockmap.Length;
 		ushort[] blocks = Level.Blockmap;
 		for (int i = 0; i < count; ++i)
-			blocks[i] = Util.LittleShort(blocks[i]);
+			blocks[i] = blocks[i];
 
 		byte[] data = Util.StructArrayToBytes(blocks);
 		writer.WriteLump("BLOCKMAP", data, data.Length);
 
 		for (int i = 0; i < count; ++i)
-			blocks[i] = Util.LittleShort(blocks[i]);
+			blocks[i] = blocks[i];
 
 		if (count >= 65536)
 		{
@@ -859,8 +1160,8 @@ public sealed class FProcessor
 		int[] verts = new int[count * 2 + 1];
 		for (int i = 0; i < count; ++i)
 		{
-			verts[i * 2 + 1] = Util.LittleLong(vertdata[Level.NumOrgVerts + i].x);
-			verts[i * 2 + 2] = Util.LittleLong(vertdata[Level.NumOrgVerts + i].y);
+			verts[i * 2 + 1] = vertdata[Level.NumOrgVerts + i].x;
+			verts[i * 2 + 2] = vertdata[Level.NumOrgVerts + i].y;
 		}
 
 		byte[] data = Util.StructArrayToBytes(verts);
@@ -891,18 +1192,18 @@ public sealed class FProcessor
 		for (int i = 0; i < count; ++i)
 		{
 			if (Level.GLSegs[i].v1 < (uint)Level.NumOrgVerts)
-				segdata[i].v1 = Util.LittleShort((ushort)Level.GLSegs[i].v1);
+				segdata[i].v1 = (ushort)Level.GLSegs[i].v1;
 			else
-				segdata[i].v1 = Util.LittleShort((ushort)(0x8000 | (ushort)(Level.GLSegs[i].v1 - Level.NumOrgVerts)));
+				segdata[i].v1 = (ushort)(0x8000 | (ushort)(Level.GLSegs[i].v1 - Level.NumOrgVerts));
 
 			if (Level.GLSegs[i].v2 < (uint)Level.NumOrgVerts)
-				segdata[i].v2 = Util.LittleShort((ushort)Level.GLSegs[i].v2);
+				segdata[i].v2 = (ushort)Level.GLSegs[i].v2;
 			else
-				segdata[i].v2 = Util.LittleShort((ushort)(0x8000 | (ushort)(Level.GLSegs[i].v2 - Level.NumOrgVerts)));
+				segdata[i].v2 = (ushort)(0x8000 | (ushort)(Level.GLSegs[i].v2 - Level.NumOrgVerts));
 
-			segdata[i].linedef = Util.LittleShort((ushort)Level.GLSegs[i].linedef);
-			segdata[i].side = Util.LittleShort(Level.GLSegs[i].side);
-			segdata[i].partner = Util.LittleShort((ushort)Level.GLSegs[i].partner);
+			segdata[i].linedef = (ushort)Level.GLSegs[i].linedef;
+			segdata[i].side = Level.GLSegs[i].side;
+			segdata[i].partner = (ushort)Level.GLSegs[i].partner;
 		}
 		byte[] data = Util.StructArrayToBytes(segdata);
 		writer.WriteLump("GL_SEGS", data, data.Length);
@@ -925,18 +1226,18 @@ public sealed class FProcessor
 		for (int i = 0; i < count; ++i)
 		{
 			if (Level.GLSegs[i].v1 < (uint)Level.NumOrgVerts)
-				segdata[i].v1 = Util.LittleLong(Level.GLSegs[i].v1);
+				segdata[i].v1 = Level.GLSegs[i].v1;
 			else
-				segdata[i].v1 = Util.LittleLong(0x80000000u | Level.GLSegs[i].v1 - Level.NumOrgVerts);
+				segdata[i].v1 = (int)(0x80000000u | Level.GLSegs[i].v1 - Level.NumOrgVerts);
 
 			if (Level.GLSegs[i].v2 < (uint)Level.NumOrgVerts)
-				segdata[i].v2 = Util.LittleLong(Level.GLSegs[i].v2);
+				segdata[i].v2 = Level.GLSegs[i].v2;
 			else
-				segdata[i].v2 = Util.LittleLong(0x80000000u | Level.GLSegs[i].v2 - Level.NumOrgVerts);
+				segdata[i].v2 = (int)(0x80000000u | Level.GLSegs[i].v2 - Level.NumOrgVerts);
 
-			segdata[i].linedef = Util.LittleLong(Level.GLSegs[i].linedef);
-			segdata[i].side = Util.LittleShort(Level.GLSegs[i].side);
-			segdata[i].partner = Util.LittleLong(Level.GLSegs[i].partner);
+			segdata[i].linedef = Level.GLSegs[i].linedef;
+			segdata[i].side = Level.GLSegs[i].side;
+			segdata[i].partner = Level.GLSegs[i].partner;
 		}
 		byte[] data = Util.StructArrayToBytes(segdata);
 		writer.WriteLump("GL_SEGS", data, data.Length);
@@ -1225,8 +1526,8 @@ public sealed class FProcessor
 		MapSubsector[] ssec = new MapSubsector[subs.Length];
 		for (int i = 0; i < subs.Length; ++i)
 		{
-			ssec[i].firstline = Util.LittleShort((ushort)subs[i].firstline);
-			ssec[i].numlines = Util.LittleShort((ushort)subs[i].numlines);
+			ssec[i].firstline = (ushort)subs[i].firstline;
+			ssec[i].numlines = (ushort)subs[i].numlines;
 		}
 
 		byte[] data = Util.StructArrayToBytes(ssec);
@@ -1243,10 +1544,10 @@ public sealed class FProcessor
 
 		for (int i = 0; i < zaNodes.Length; ++i)
 		{
-			nodes[nodePos++] = Util.LittleShort((short)(zaNodes[i].x >> 16));
-			nodes[nodePos++] = Util.LittleShort((short)(zaNodes[i].y >> 16));
-			nodes[nodePos++] = Util.LittleShort((short)(zaNodes[i].dx >> 16));
-			nodes[nodePos++] = Util.LittleShort((short)(zaNodes[i].dy >> 16));
+			nodes[nodePos++] = (short)(zaNodes[i].x >> 16);
+			nodes[nodePos++] = (short)(zaNodes[i].y >> 16);
+			nodes[nodePos++] = (short)(zaNodes[i].dx >> 16);
+			nodes[nodePos++] = (short)(zaNodes[i].dy >> 16);
 
 			for (int iNode = 0; iNode < 2 * 4; iNode++)
 				nodes[nodePos++] = zaNodes[i].bbox[iNode];
@@ -1255,9 +1556,9 @@ public sealed class FProcessor
 			{
 				uint child = zaNodes[i].children[j];
 				if ((child & Constants.NFX_SUBSECTOR) != 0)
-					nodes[nodePos++] = Util.LittleShort((short)(child - (Constants.NFX_SUBSECTOR + Constants.NF_SUBSECTOR)));
+					nodes[nodePos++] = (short)(child - (Constants.NFX_SUBSECTOR + Constants.NF_SUBSECTOR));
 				else
-					nodes[nodePos++] = (short)Util.LittleShort((ushort)child);
+					nodes[nodePos++] = (short)child;
 			}
 		}
 
@@ -1276,15 +1577,15 @@ public sealed class FProcessor
 		for (int i = 0; i < zaNodes.Length; ++i)
 		{
 			for (int iCoord = 0; iCoord < 2 * 4; iCoord++)
-				nodes[i].bbox[iCoord] = Util.LittleShort(zaNodes[i].bbox[iCoord]);
+				nodes[i].bbox[iCoord] = zaNodes[i].bbox[iCoord];
 
-			nodes[i].x = Util.LittleShort((short)(zaNodes[i].x >> 16));
-			nodes[i].y = Util.LittleShort((short)(zaNodes[i].y >> 16));
-			nodes[i].dx = Util.LittleShort((short)(zaNodes[i].dx >> 16));
-			nodes[i].dy = Util.LittleShort((short)(zaNodes[i].dy >> 16));
+			nodes[i].x = (short)(zaNodes[i].x >> 16);
+			nodes[i].y = (short)(zaNodes[i].y >> 16);
+			nodes[i].dx = (short)(zaNodes[i].dx >> 16);
+			nodes[i].dy = (short)(zaNodes[i].dy >> 16);
 
 			for (int j = 0; j < 2; ++j)
-				nodes[i].children[j] = Util.LittleLong(zaNodes[i].children[j]);
+				nodes[i].children[j] =	zaNodes[i].children[j];
 		}
 		byte[] data = Util.StructArrayToBytes(nodes);
 		writer.WriteLump(name, data, data.Length);
@@ -1295,8 +1596,8 @@ public sealed class FProcessor
 		MapSubsectorEx[] ssec = new MapSubsectorEx[subs.Length];
 		for (int i = 0; i < subs.Length; ++i)
 		{
-			ssec[i].firstline = Util.LittleLong(subs[i].firstline);
-			ssec[i].numlines = Util.LittleLong(subs[i].numlines);
+			ssec[i].firstline = subs[i].firstline;
+			ssec[i].numlines = subs[i].numlines;
 		}
 
 		byte[] data = Util.StructArrayToBytes(ssec);

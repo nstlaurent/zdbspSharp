@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Text;
 
 namespace zdbspSharp;
 
@@ -53,7 +52,16 @@ public partial class FNodeBuilder
 		MapName = name;
 		VertexMap = new FVertexMap(this, Level.MinX, Level.MinY, Level.MaxX, Level.MaxY);
 		GLNodes = makeGLnodes;
-		FindUsedVertices(Level.Vertices, Level.NumVertices);
+
+        Vertices.EnsureCapacity(Level.Vertices.Length);
+		Segs.EnsureCapacity(Level.Lines.Length * 4);
+		SegList.EnsureCapacity(Segs.Capacity);
+        Subsectors.EnsureCapacity(Level.Sectors.Length * 4);
+		SubsectorSets.EnsureCapacity(Subsectors.Capacity);
+		Planes.EnsureCapacity(Level.Sectors.Length * 2);
+        Nodes.EnsureCapacity(Level.Sectors.Length * 4);
+
+        FindUsedVertices(Level.Vertices, Level.NumVertices);
 		MakeSegsFromSides();
 		FindPolyContainers(polyspots, anchors);
 		GroupSegPlanes();
@@ -535,9 +543,7 @@ public partial class FNodeBuilder
 		int seg = set;
 		bool nosplitters = false;
 
-		//printf("Processing set %d\n", set));
-		for (int i = 0; i < PlaneChecked.Length; i++)
-			PlaneChecked.Data[i] = 0;
+		Util.ZeroArray(PlaneChecked.Data, PlaneChecked.Length);
 
 		while (seg != Constants.MAX_INT)
 		{

@@ -4,11 +4,11 @@ public sealed class FLevel
 {
 	public WideVertex[] Vertices = Array.Empty<WideVertex>();
 	public int NumVertices;
-	public List<IntVertex> VertexProps = new();
+	public DynamicArray<IntVertex> VertexProps = new();
 	public DynamicArray<IntSideDef> Sides = new();
 	public DynamicArray<IntLineDef> Lines = new();
 	public DynamicArray<IntSector> Sectors = new();
-	public List<IntThing> Things = new();
+	public DynamicArray<IntThing> Things = new();
 	public MapSubsectorEx[] Subsectors = Array.Empty<MapSubsectorEx>();
 	public MapSegEx[] Segs = Array.Empty<MapSegEx>();
 	public MapNodeEx[] Nodes = Array.Empty<MapNodeEx>();
@@ -233,6 +233,6 @@ public sealed class FLevel
 
 	public int NumThings()
 	{
-		return Things.Count;
+		return Things.Length;
 	}
 }

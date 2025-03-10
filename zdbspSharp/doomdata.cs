@@ -24,10 +24,10 @@ public static class Box
 	public const int BOXRIGHT = 3;
 }
 
-public unsafe struct UDMFKey
+public struct UDMFKey(string k, string v)
 {
-	public readonly string key;
-	public readonly string value;
+    public string key = k;
+	public string value = v;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -73,7 +73,7 @@ public unsafe struct IntSideDef
 
 	public int sector;
 
-	//public List<UDMFKey> props = new List<UDMFKey>();
+	public List<UDMFKey>? props;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -98,6 +98,12 @@ public unsafe struct MapLineDef2
 	public fixed ushort sidenum[2];
 }
 
+readonly ref struct Property(ReadOnlySpan<char> name, ReadOnlySpan<char> value)
+{
+    public readonly ReadOnlySpan<char> Name = name;
+    public readonly ReadOnlySpan<char> Value = value;
+}
+
 [StructLayout(LayoutKind.Sequential)]
 public unsafe struct IntLineDef
 {
@@ -108,7 +114,7 @@ public unsafe struct IntLineDef
 	public fixed int args[5];
 	public fixed int sidenum[2];
 
-	//public List<UDMFKey> props = new List<UDMFKey>();
+	public List<UDMFKey>? props;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -138,7 +144,7 @@ public unsafe struct IntSector
 	public short special;
 	public short tag;
 
-	//public List<UDMFKey> props = new List<UDMFKey>();
+    public List<UDMFKey>? props;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -268,7 +274,7 @@ public unsafe struct IntThing
 	public byte special;
 	public fixed byte args[5];
 
-	//public List<UDMFKey> props = new List<UDMFKey>();
+	public List<UDMFKey>? props;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -282,7 +288,7 @@ public struct IntVertex
 {
 	public IntVertex() { }
 
-	public List<UDMFKey> props = new List<UDMFKey>();
+	public List<UDMFKey>? props;
 }
 
 public sealed class FPrivVert
