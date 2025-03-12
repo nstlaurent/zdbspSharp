@@ -8,7 +8,7 @@
 	<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	<Title>zdbsp sharp</Title>
 	<RepositoryUrl>https://github.com/nstlaurent/zdbspSharp</RepositoryUrl>
-	 <Version>1.0.3</Version>
+	 <Version>1.0.4</Version>
 	 <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
   </PropertyGroup>
 

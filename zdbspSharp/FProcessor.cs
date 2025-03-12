@@ -23,6 +23,7 @@ public sealed class FProcessor
 	private readonly int Lump;
 
 	private readonly ProcessorOptions m_options;
+	private string m_udmfNamespace = "\"zdoom\"";
 
 	public FProcessor(FWadReader inwad, int lump, ProcessorOptions options)
 	{
@@ -70,11 +71,11 @@ public sealed class FProcessor
 
     private void LoadUDMF(int lump)
     {
-        DynamicArray<WideVertex> Vertices = new(2048);
+        DynamicArray<WideVertex> Vertices = new(16384);
 
         var text = Encoding.UTF8.GetString(Util.ReadLumpBytes(Wad, lump));
         var parser = new SimpleParser();
-		parser.Parse(text);
+		parser.Parse(text, parseQuotes: false);
 		ParseMapProperties(parser);
 
         while (!parser.IsDone())
@@ -134,9 +135,9 @@ public sealed class FProcessor
     {
         parser.ConsumeString("namespace");
         parser.Consume('=');
-        var ns = parser.ConsumeStringSpan();
+        m_udmfNamespace = parser.ConsumeString();
         parser.Consume(';');
-        Extended = ns.EqualsIgnoreCase("\"ZDoom\"") || ns.EqualsIgnoreCase("\"Hexen") || ns.EqualsIgnoreCase("\"Vavoom\"");
+        Extended = m_udmfNamespace.EqualsIgnoreCase("\"ZDoom\"") || m_udmfNamespace.EqualsIgnoreCase("\"Hexen") || m_udmfNamespace.EqualsIgnoreCase("\"Vavoom\"");
     }
 
     private static void ConsumeBlock(SimpleParser parser)
@@ -293,6 +294,7 @@ public sealed class FProcessor
             writer.CopyLump(Wad, Lump);
 			WriteUDMF(writer);
 			WriteGLData(writer, compressGL, gl5);
+			writer.CreateLabel("ENDMAP");
             return;
         }
 
@@ -372,8 +374,7 @@ public sealed class FProcessor
     private void WriteUDMF(FWadWriter writer)
     {
 		writer.StartWritingLump("TEXTMAP");
-		// TODO actually write namespace
-		writer.AddToLump("namespace = zdoom;");
+		writer.AddToLump($"namespace = {m_udmfNamespace};\n");
 
 		for (int i = 0; i < Level.Things.Length; i++)
 			WriteThingUDMF(writer, ref Level.Things.Data[i]);
