@@ -81,6 +81,13 @@ public sealed class FProcessor
         while (!parser.IsDone())
         {
 			var item = parser.ConsumeStringSpan();
+			if (item.EqualsIgnoreCase("ee_compat")) // flag indicating that map is compatible with Eternity Engine
+			{
+				parser.Consume('=');
+				parser.ConsumeStringSpan(); // this will normally be "true" but we don't care about the value
+				parser.Consume(';');
+				continue;
+			}
 			parser.Consume('{');
             if (item.EqualsIgnoreCase("thing"))
             {
