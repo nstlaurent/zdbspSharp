@@ -81,44 +81,45 @@ public sealed class FProcessor
         while (!parser.IsDone())
         {
 			var item = parser.ConsumeStringSpan();
-			if (item.EqualsIgnoreCase("ee_compat")) // flag indicating that map is compatible with Eternity Engine
-			{
-				parser.Consume('=');
-				parser.ConsumeStringSpan(); // this will normally be "true" but we don't care about the value
-				parser.Consume(';');
-				continue;
-			}
-			parser.Consume('{');
             if (item.EqualsIgnoreCase("thing"))
             {
+	            parser.Consume('{');
 				Level.Things.EnsureCapacity(Level.Things.Length + 1);
                 ref var th = ref Level.Things.Data[Level.Things.Length];
 				ParseThing(parser, ref th);
                 Level.Things.Length++;
+                parser.Consume('}');
             }
             else if (item.EqualsIgnoreCase("linedef"))
             {
+	            parser.Consume('{');
 				Level.Lines.EnsureCapacity(Level.Lines.Length + 1);
                 ref var ld = ref Level.Lines.Data[Level.Lines.Length];
                 ParseLinedef(parser, ref ld);
 				Level.Lines.Length++;
+				parser.Consume('}');
             }
             else if (item.EqualsIgnoreCase("sidedef"))
             {
+	            parser.Consume('{');
 				Level.Sides.EnsureCapacity(Level.Sides.Length + 1);
                 ref var sd = ref Level.Sides.Data[Level.Sides.Length];
                 ParseSidedef(parser, ref sd);
 				Level.Sides.Length++;
+				parser.Consume('}');
             }
             else if (item.EqualsIgnoreCase("sector"))
             {
+	            parser.Consume('{');
 				Level.Sectors.EnsureCapacity(Level.Sectors.Length + 1);
                 ref var sec = ref Level.Sectors.Data[Level.Sectors.Length];
 				ParseSector(parser, ref sec);
                 Level.Sectors.Length++;
+                parser.Consume('}');
             }
             else if (item.EqualsIgnoreCase("vertex"))
             {
+	            parser.Consume('{');
 				Vertices.EnsureCapacity(Vertices.Length + 1);
                 ref var vt = ref Vertices.Data[Vertices.Length];
 				Level.VertexProps.EnsureCapacity(Level.VertexProps.Length + 1);
@@ -127,8 +128,10 @@ public sealed class FProcessor
                 Level.VertexProps.Length++;
                 Vertices.Length++;
                 ParseVertex(parser, ref vt, ref vtp);
+                parser.Consume('}');
             }
-			parser.Consume('}');
+			else
+				ConsumeUnknownBlockOrProperty(parser);
         }
         
 		Level.Vertices = new WideVertex[Vertices.Length];
@@ -138,6 +141,32 @@ public sealed class FProcessor
 			Level.Vertices[i] = Vertices[i];
     }
 
+    private static void ConsumeUnknownBlockOrProperty(SimpleParser parser)
+    {
+	    if (parser.Peek("="))
+		    ConsumeUnknownProperty(parser);
+	    else if (parser.Peek("{"))
+		    ConsumeUnknownBlock(parser);
+	    else
+		    throw new Exception("Malformed UDMF TEXTMAP. Expected '=' or '{' but found: " + parser.PeekString());
+    }
+
+    private static void ConsumeUnknownProperty(SimpleParser parser)
+    {
+	    parser.Consume('=');
+	    parser.ConsumeStringSpan();
+	    parser.Consume(';');
+    }
+
+    private static void ConsumeUnknownBlock(SimpleParser parser)
+    {
+	    parser.Consume('{');
+	    while (!parser.Peek('}'))
+		    parser.ConsumeStringSpan();
+
+	    parser.Consume('}');
+    }
+
     private void ParseMapProperties(SimpleParser parser)
     {
         parser.ConsumeString("namespace");
@@ -145,12 +174,6 @@ public sealed class FProcessor
         m_udmfNamespace = parser.ConsumeString();
         parser.Consume(';');
         Extended = m_udmfNamespace.EqualsIgnoreCase("\"ZDoom\"") || m_udmfNamespace.EqualsIgnoreCase("\"Hexen") || m_udmfNamespace.EqualsIgnoreCase("\"Vavoom\"");
-    }
-
-    private static void ConsumeBlock(SimpleParser parser)
-    {
-        while (parser.PeekString() != "}")
-            parser.ConsumeLineSpan();
     }
 
     private static void ParseThing(SimpleParser parser, ref IntThing th)
