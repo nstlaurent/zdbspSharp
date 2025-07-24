@@ -301,6 +301,9 @@ internal class SimpleParser
         if (quotedString)
             startIndex++;
 
+        if (currentIndex - startIndex < 0)
+            return;
+
         // Always add empty string if in quotes
         if (quotedString || startIndex != currentIndex)
             m_tokens.Add(new ParserToken(lineCount, startIndex, currentIndex - startIndex));
@@ -310,6 +313,9 @@ internal class SimpleParser
     {
         if (quotedString)
             startIndex++;
+
+        if (endIndex - startIndex < 0)
+            return;
 
         m_tokens.Add(new ParserToken(startLine, startIndex, endIndex - startIndex, endLine, endIndex));
     }
