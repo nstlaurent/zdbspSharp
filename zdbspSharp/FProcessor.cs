@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Frozen;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 namespace zdbspSharp;
@@ -69,24 +70,31 @@ public sealed class FProcessor
 		}
 	}
 
+
     private void LoadUDMF(int lump)
     {
-        DynamicArray<WideVertex> Vertices = new(16384);
+		var Vertices = new DynamicArray<WideVertex>(16384);
+		var lumpData = Wad.Lumps[lump];
 
-        var text = Encoding.UTF8.GetString(Util.ReadLumpBytes(Wad, lump));
-        var parser = new SimpleParser();
-		parser.Parse(text, parseQuotes: false);
+        char[] ParseChars = [';', ')', '(', '{', '}'];
+        var ParseCharSet = ParseChars.ToFrozenSet();
+        using var stream = new SubStream(Wad.ReadStream, lumpData.FilePos, lumpData.Size);
+        var parser = new StreamParser(stream, ParseCharSet);
+		var itemArray = new DynamicArray<char>(256);
+		var typeArray = new DynamicArray<char>(256);
+		var valueArray = new DynamicArray<char>(256);
+
 		ParseMapProperties(parser);
 
         while (!parser.IsDone())
         {
-			var item = parser.ConsumeStringSpan();
+			var item = parser.ConsumeStringSpan(itemArray);
             if (item.EqualsIgnoreCase("thing"))
             {
 	            parser.Consume('{');
 				Level.Things.EnsureCapacity(Level.Things.Length + 1);
                 ref var th = ref Level.Things.Data[Level.Things.Length];
-				ParseThing(parser, ref th);
+				ParseThing(parser, typeArray, valueArray, ref th);
                 Level.Things.Length++;
                 parser.Consume('}');
             }
@@ -95,7 +103,7 @@ public sealed class FProcessor
 	            parser.Consume('{');
 				Level.Lines.EnsureCapacity(Level.Lines.Length + 1);
                 ref var ld = ref Level.Lines.Data[Level.Lines.Length];
-                ParseLinedef(parser, ref ld);
+                ParseLinedef(parser, typeArray, valueArray, ref ld);
 				Level.Lines.Length++;
 				parser.Consume('}');
             }
@@ -104,7 +112,7 @@ public sealed class FProcessor
 	            parser.Consume('{');
 				Level.Sides.EnsureCapacity(Level.Sides.Length + 1);
                 ref var sd = ref Level.Sides.Data[Level.Sides.Length];
-                ParseSidedef(parser, ref sd);
+                ParseSidedef(parser, typeArray, valueArray, ref sd);
 				Level.Sides.Length++;
 				parser.Consume('}');
             }
@@ -113,7 +121,7 @@ public sealed class FProcessor
 	            parser.Consume('{');
 				Level.Sectors.EnsureCapacity(Level.Sectors.Length + 1);
                 ref var sec = ref Level.Sectors.Data[Level.Sectors.Length];
-				ParseSector(parser, ref sec);
+				ParseSector(parser, typeArray, valueArray, ref sec);
                 Level.Sectors.Length++;
                 parser.Consume('}');
             }
@@ -127,11 +135,11 @@ public sealed class FProcessor
                 vt.index = Vertices.Length;
                 Level.VertexProps.Length++;
                 Vertices.Length++;
-                ParseVertex(parser, ref vt, ref vtp);
+                ParseVertex(parser, typeArray, valueArray, ref vt, ref vtp);
                 parser.Consume('}');
             }
 			else
-				ConsumeUnknownBlockOrProperty(parser);
+				ConsumeUnknownBlockOrProperty(parser, itemArray);
         }
         
 		Level.Vertices = new WideVertex[Vertices.Length];
@@ -141,33 +149,33 @@ public sealed class FProcessor
 			Level.Vertices[i] = Vertices[i];
     }
 
-    private static void ConsumeUnknownBlockOrProperty(SimpleParser parser)
+    private static void ConsumeUnknownBlockOrProperty(StreamParser parser, DynamicArray<char> buffer)
     {
-	    if (parser.Peek("="))
-		    ConsumeUnknownProperty(parser);
-	    else if (parser.Peek("{"))
-		    ConsumeUnknownBlock(parser);
+	    if (parser.Peek('='))
+		    ConsumeUnknownProperty(parser, buffer);
+	    else if (parser.Peek('{'))
+		    ConsumeUnknownBlock(parser, buffer);
 	    else
-		    throw new Exception("Malformed UDMF TEXTMAP. Expected '=' or '{' but found: " + parser.PeekString());
+		    throw new Exception("Malformed UDMF TEXTMAP. Expected '=' or '{' but found: " + parser.ConsumeString());
     }
 
-    private static void ConsumeUnknownProperty(SimpleParser parser)
+    private static void ConsumeUnknownProperty(StreamParser parser, DynamicArray<char> buffer)
     {
 	    parser.Consume('=');
-	    parser.ConsumeStringSpan();
+	    parser.ConsumeStringSpan(buffer);
 	    parser.Consume(';');
     }
 
-    private static void ConsumeUnknownBlock(SimpleParser parser)
+    private static void ConsumeUnknownBlock(StreamParser parser, DynamicArray<char> buffer)
     {
 	    parser.Consume('{');
 	    while (!parser.Peek('}'))
-		    parser.ConsumeStringSpan();
+		    parser.ConsumeStringSpan(buffer);
 
 	    parser.Consume('}');
     }
 
-    private void ParseMapProperties(SimpleParser parser)
+    private void ParseMapProperties(StreamParser parser)
     {
         parser.ConsumeString("namespace");
         parser.Consume('=');
@@ -176,32 +184,32 @@ public sealed class FProcessor
         Extended = m_udmfNamespace.EqualsIgnoreCase("\"ZDoom\"") || m_udmfNamespace.EqualsIgnoreCase("\"Hexen") || m_udmfNamespace.EqualsIgnoreCase("\"Vavoom\"");
     }
 
-    private static void ParseThing(SimpleParser parser, ref IntThing th)
+    private static void ParseThing(StreamParser parser, DynamicArray<char> typeArray, DynamicArray<char> valueArray, ref IntThing th)
     {
         th.props ??= [];
         while (!IsBlockComplete(parser))
         {
-            var prop = ParseProperty(parser);
+            var prop = ParseProperty(parser, typeArray, valueArray);
             th.props.Add(new(prop.Name.ToString(), prop.Value.ToString()));
         }
     }
 
-    private static void ParseSector(SimpleParser parser, ref IntSector sec)
+    private static void ParseSector(StreamParser parser, DynamicArray<char> typeArray, DynamicArray<char> valueArray, ref IntSector sec)
     {
         sec.props ??= [];
         while (!IsBlockComplete(parser))
         {
-            var prop = ParseProperty(parser);
+            var prop = ParseProperty(parser, typeArray, valueArray);
             sec.props.Add(new(prop.Name.ToString(), prop.Value.ToString()));
         }
     }
 
-    private static void ParseSidedef(SimpleParser parser, ref IntSideDef sd)
+    private static void ParseSidedef(StreamParser parser, DynamicArray<char> typeArray, DynamicArray<char> valueArray, ref IntSideDef sd)
     {
         sd.sector = Constants.MAX_INT;
         while (!IsBlockComplete(parser))
         {
-            var prop = ParseProperty(parser);
+            var prop = ParseProperty(parser, typeArray, valueArray);
             if (prop.Name.EqualsIgnoreCase("sector"))
             {
                 sd.sector = parser.ParseInt(prop.Value);
@@ -213,12 +221,12 @@ public sealed class FProcessor
         }
     }
 
-    private static void ParseVertex(SimpleParser parser, ref WideVertex vt, ref IntVertex vtp)
+    private static void ParseVertex(StreamParser parser, DynamicArray<char> typeArray, DynamicArray<char> valueArray, ref WideVertex vt, ref IntVertex vtp)
     {
 		vtp.props = [];
         while (!IsBlockComplete(parser))
         {
-            var prop = ParseProperty(parser);
+            var prop = ParseProperty(parser, typeArray, valueArray);
             if (prop.Name.EqualsIgnoreCase("x"))
             {
                 vt.x = (int)(parser.ParseDouble(prop.Value) * (1 << 16));
@@ -232,13 +240,13 @@ public sealed class FProcessor
         }
     }
 
-    private unsafe void ParseLinedef(SimpleParser parser, ref IntLineDef ld)
+    private unsafe void ParseLinedef(StreamParser parser, DynamicArray<char> typeArray, DynamicArray<char> valueArray, ref IntLineDef ld)
     {
         ld.v1 = ld.v2 = ld.sidenum[0] = ld.sidenum[1] = Constants.MAX_INT;
         ld.special = 0;
         while (!IsBlockComplete(parser))
         {
-			var prop = ParseProperty(parser);
+			var prop = ParseProperty(parser, typeArray, valueArray);
             if (prop.Name.EqualsIgnoreCase("v1"))
             {
                 ld.v1 = parser.ParseInt(prop.Value);
@@ -273,16 +281,16 @@ public sealed class FProcessor
 		}
     }
 
-    private static Property ParseProperty(SimpleParser parser)
+    private static Property ParseProperty(StreamParser parser, DynamicArray<char> typeArray, DynamicArray<char> valueArray)
     {
-        var type = parser.ConsumeStringSpan();
+        var type = parser.ConsumeStringSpan(typeArray);
         parser.Consume('=');
-        var value = parser.ConsumeStringSpan();
+        var value = parser.ConsumeStringSpan(valueArray);
         parser.Consume(';');
         return new(type, value);
     }
 
-    private static bool IsBlockComplete(SimpleParser parser) => parser.Peek('}');
+    private static bool IsBlockComplete(StreamParser parser) => parser.Peek('}');
 
     public void Write(FWadWriter writer)
     {
