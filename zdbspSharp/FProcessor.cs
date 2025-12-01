@@ -6,10 +6,11 @@ namespace zdbspSharp;
 
 public sealed class FProcessor
 {
-    readonly ref struct Property(ReadOnlySpan<char> name, ReadOnlySpan<char> value)
+    readonly ref struct Property(ReadOnlySpan<char> name, ReadOnlySpan<char> value, bool quote)
     {
         public readonly ReadOnlySpan<char> Name = name;
         public readonly ReadOnlySpan<char> Value = value;
+		public readonly bool Quote = quote;
     }
 
     private readonly FLevel Level = new();
@@ -190,7 +191,7 @@ public sealed class FProcessor
         while (!IsBlockComplete(parser))
         {
             var prop = ParseProperty(parser, typeArray, valueArray);
-            th.props.Add(new(prop.Name.ToString(), prop.Value.ToString()));
+            th.props.Add(new(prop.Name.ToString(), prop.Value.ToString(), prop.Quote));
         }
     }
 
@@ -200,7 +201,7 @@ public sealed class FProcessor
         while (!IsBlockComplete(parser))
         {
             var prop = ParseProperty(parser, typeArray, valueArray);
-            sec.props.Add(new(prop.Name.ToString(), prop.Value.ToString()));
+            sec.props.Add(new(prop.Name.ToString(), prop.Value.ToString(), prop.Quote));
         }
     }
 
@@ -217,7 +218,7 @@ public sealed class FProcessor
             }
 
             sd.props ??= [];
-            sd.props.Add(new(prop.Name.ToString(), prop.Value.ToString()));
+            sd.props.Add(new(prop.Name.ToString(), prop.Value.ToString(), prop.Quote));
         }
     }
 
@@ -236,7 +237,7 @@ public sealed class FProcessor
                 vt.y = (int)(parser.ParseDouble(prop.Value) * (1 << 16));
             }
 
-			vtp.props.Add(new(prop.Name.ToString(), prop.Value.ToString()));
+			vtp.props.Add(new(prop.Name.ToString(), prop.Value.ToString(), prop.Quote));
         }
     }
 
@@ -277,7 +278,7 @@ public sealed class FProcessor
             }
 
 			ld.props ??= [];
-			ld.props.Add(new(prop.Name.ToString(), prop.Value.ToString()));
+			ld.props.Add(new(prop.Name.ToString(), prop.Value.ToString(), prop.Quote));
 		}
     }
 
@@ -286,8 +287,9 @@ public sealed class FProcessor
         var type = parser.ConsumeStringSpan(typeArray);
         parser.Consume('=');
         var value = parser.ConsumeStringSpan(valueArray);
+		var quote = parser.LastTokenWasQuoted;
         parser.Consume(';');
-        return new(type, value);
+        return new(type, value, quote);
     }
 
     private static bool IsBlockComplete(StreamParser parser) => parser.Peek('}');
@@ -443,7 +445,7 @@ public sealed class FProcessor
     private static readonly byte[] LinedefBytes = Encoding.UTF8.GetBytes("linedef");
     private static readonly byte[] SidedefBytes = Encoding.UTF8.GetBytes("sidedef");
     private static readonly byte[] SectorBytes = Encoding.UTF8.GetBytes("sector");
-
+    private static readonly byte[] QuoteBytes = Encoding.UTF8.GetBytes("\"");
 
     private static void WriteSectorUDMF(FWadWriter writer, ref IntSector s)
     {
@@ -499,9 +501,14 @@ public sealed class FProcessor
 
 		for (int i = 0; i < props.Count; i++)
 		{
-			writer.AddToLump(props[i].key);
+			var prop = props[i];
+			writer.AddToLump(prop.key);
 			writer.AddToLump(EqualsBytes);
-			writer.AddToLump(props[i].value);
+			if (prop.quote)
+				writer.AddToLump(QuoteBytes);
+			writer.AddToLump(prop.value);
+            if (prop.quote)
+                writer.AddToLump(QuoteBytes);
             writer.AddToLump(Semicolon);
         }
     }

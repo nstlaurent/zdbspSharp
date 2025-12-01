@@ -24,10 +24,11 @@ public static class Box
 	public const int BOXRIGHT = 3;
 }
 
-public struct UDMFKey(string k, string v)
+public struct UDMFKey(string k, string v, bool q)
 {
     public string key = k;
 	public string value = v;
+	public bool quote = q;
 }
 
 [StructLayout(LayoutKind.Sequential)]
