@@ -15,8 +15,8 @@ public sealed class FProcessor
 
     private readonly FLevel Level = new();
 
-	private readonly List<FPolyStart> PolyStarts = new();
-	private readonly List<FPolyStart> PolyAnchors = new();
+	private readonly List<FPolyStart> PolyStarts = [];
+	private readonly List<FPolyStart> PolyAnchors = [];
 
 	private bool Extended;
 	private readonly bool isUDMF;
@@ -25,7 +25,7 @@ public sealed class FProcessor
 	private readonly int Lump;
 
 	private readonly ProcessorOptions m_options;
-	private string m_udmfNamespace = "\"zdoom\"";
+	private string m_udmfNamespace = "zdoom";
 
 	public FProcessor(FWadReader inwad, int lump, ProcessorOptions options)
 	{
@@ -176,13 +176,16 @@ public sealed class FProcessor
 	    parser.Consume('}');
     }
 
+	private static readonly string[] ExtendedNamespaces = ["ZDoom", "Hexen", "Vavoom", "Helion"];
+
     private void ParseMapProperties(StreamParser parser)
     {
         parser.ConsumeString("namespace");
         parser.Consume('=');
-        m_udmfNamespace = parser.ConsumeString();
+        m_udmfNamespace = parser.ConsumeString().Trim('"');
         parser.Consume(';');
-        Extended = m_udmfNamespace.EqualsIgnoreCase("\"ZDoom\"") || m_udmfNamespace.EqualsIgnoreCase("\"Hexen") || m_udmfNamespace.EqualsIgnoreCase("\"Vavoom\"");
+
+        Extended = Array.Exists(ExtendedNamespaces, ns => m_udmfNamespace.EqualsIgnoreCase(ns));
     }
 
     private static void ParseThing(StreamParser parser, DynamicArray<char> typeArray, DynamicArray<char> valueArray, ref IntThing th)
@@ -414,7 +417,7 @@ public sealed class FProcessor
     private void WriteUDMF(FWadWriter writer)
     {
 		writer.StartWritingLump("TEXTMAP");
-		writer.AddToLump($"namespace = {m_udmfNamespace};\n");
+		writer.AddToLump($"namespace = \"{m_udmfNamespace}\";\n");
 
 		for (int i = 0; i < Level.Things.Length; i++)
 			WriteThingUDMF(writer, ref Level.Things.Data[i]);
@@ -435,9 +438,8 @@ public sealed class FProcessor
             WriteSectorUDMF(writer, ref Level.Sectors.Data[i]);
     }
 
-
     private static readonly byte[] StartBrace = Encoding.UTF8.GetBytes("\n{\n");
-    private static readonly byte[] EndBrace = Encoding.UTF8.GetBytes("\n}\n");
+    private static readonly byte[] EndBrace = Encoding.UTF8.GetBytes("}\n");
 	private static readonly byte[] EqualsBytes = Encoding.UTF8.GetBytes(" = ");
     private static readonly byte[] Semicolon = Encoding.UTF8.GetBytes(";\n");
 	private static readonly byte[] ThingBytes = Encoding.UTF8.GetBytes("thing");

@@ -199,20 +199,16 @@ public class FBlockmapBuilder
 		blockIndex += inc;
 		if (blockIndex < BlockLists.Length)
 			return BlockLists[blockIndex];
-		return null;
+		return new DynamicArray<ushort>();
     }
 
 	private static void SwapBlocks(ref DynamicArray<ushort> blocks1, ref DynamicArray<ushort> blocks2, ref int blockIndex1, ref int blockIndex2)
     {
-		var tempBlock = blocks1;
-		blocks1 = blocks2;
-		blocks2 = tempBlock;
-		var tempIndex = blockIndex1;
-		blockIndex1 = blockIndex2;
-		blockIndex2 = tempIndex;
-	}
+        (blocks2, blocks1) = (blocks1, blocks2);
+        (blockIndex2, blockIndex1) = (blockIndex1, blockIndex2);
+    }
 
-	private void CreateUnpackedBlockmap(List<ushort>[] blocks, int bmapwidth, int bmapheight)
+    private void CreateUnpackedBlockmap(List<ushort>[] blocks, int bmapwidth, int bmapheight)
 	{
 		List<ushort> block;
 		ushort zero = 0;

@@ -8,8 +8,9 @@
 	<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	<Title>zdbsp sharp</Title>
 	<RepositoryUrl>https://github.com/nstlaurent/zdbspSharp</RepositoryUrl>
-	 <Version>1.0.8</Version>
-	 <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+	<Version>1.0.9</Version>
+	<PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+	<NoWarn>CS8500</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
