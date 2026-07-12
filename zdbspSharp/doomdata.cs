@@ -370,10 +370,10 @@ public sealed class FSimpleLine
 	public int x, y, dx, dy;
 };
 
-public sealed class USegPtr
+public sealed class USegPtr(int segNum, FPrivSeg segPtr)
 {
-	public int SegNum;
-	public FPrivSeg SegPtr;
+	public int SegNum = segNum;
+	public FPrivSeg SegPtr = segPtr;
 
     public override string ToString()
     {

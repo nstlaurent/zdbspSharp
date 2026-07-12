@@ -1056,7 +1056,7 @@ public partial class FNodeBuilder
 		FPrivVert v = Vertices[vertex];
 		double dist = ((double)v.x - node.x) * (node.dx) + ((double)v.y - node.y) * (node.dy);
 
-		FEvent fevent = Events.FindEvent(dist);
+		var fevent = Events.FindEvent(dist);
 
 		if (fevent == null)
 		{
@@ -1079,7 +1079,7 @@ public partial class FNodeBuilder
 		{
 			int seg = SplitSharers[i].Seg;
 			int v2 = Segs[seg].v2;
-			FEvent? fevent = Events.FindEvent(SplitSharers[i].Distance);
+			var fevent = Events.FindEvent(SplitSharers[i].Distance);
 			FEvent? next;
 
 			// Should not happen
@@ -1833,9 +1833,7 @@ public partial class FNodeBuilder
 			sub.firstline = SegList.Count;
 			while (set != Constants.MAX_INT)
 			{
-				USegPtr ptr = new();
-				ptr.SegPtr = Segs[set];
-				ptr.SegNum = set;
+				var ptr = new USegPtr(set, Segs[set]);
 				SegList.Add(ptr);
 				set = ptr.SegPtr.next;
 			}

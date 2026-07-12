@@ -2,37 +2,35 @@
 
 public sealed class FLevel
 {
-	public WideVertex[] Vertices = Array.Empty<WideVertex>();
+	public WideVertex[] Vertices = [];
 	public int NumVertices;
-	public DynamicArray<IntVertex> VertexProps = new();
-	public DynamicArray<IntSideDef> Sides = new();
-	public DynamicArray<IntLineDef> Lines = new();
-	public DynamicArray<IntSector> Sectors = new();
-	public DynamicArray<IntThing> Things = new();
-	public MapSubsectorEx[] Subsectors = Array.Empty<MapSubsectorEx>();
-	public MapSegEx[] Segs = Array.Empty<MapSegEx>();
-	public MapNodeEx[] Nodes = Array.Empty<MapNodeEx>();
-	public ushort[] Blockmap = Array.Empty<ushort>();
+	public DynamicArray<IntVertex> VertexProps = new(8192);
+	public DynamicArray<IntSideDef> Sides = new(4096);
+	public DynamicArray<IntLineDef> Lines = new(2048);
+	public DynamicArray<IntSector> Sectors = new(2048);
+	public DynamicArray<IntThing> Things = new(1024);
+	public MapSubsectorEx[] Subsectors = [];
+	public MapSegEx[] Segs = [];
+	public MapNodeEx[] Nodes = [];
+	public ushort[] Blockmap = [];
 	public byte[]? Reject = null;
 	public int RejectSize;
 
-	public MapSubsectorEx[] GLSubsectors = Array.Empty<MapSubsectorEx>();
-	public MapSegGLEx[] GLSegs = Array.Empty<MapSegGLEx>();
-	public MapNodeEx[] GLNodes = Array.Empty<MapNodeEx>();
-	public WideVertex[] GLVertices = Array.Empty<WideVertex>();
-	public byte[] GLPVS = Array.Empty<byte>();
+	public MapSubsectorEx[] GLSubsectors = [];
+	public MapSegGLEx[] GLSegs = [];
+    public MapNodeEx[] GLNodes = [];
+    public WideVertex[] GLVertices = [];
+    public byte[] GLPVS = [];
 
-	public int NumOrgVerts;
+    public int NumOrgVerts;
 
-	public uint[] OrgSectorMap = Array.Empty<uint>();
-	public int NumOrgSectors;
+	public uint[] OrgSectorMap = [];
+    public int NumOrgSectors;
 
 	public int MinX;
 	public int MinY;
 	public int MaxX;
 	public int MaxY;
-
-	public List<UDMFKey> props = new();
 
 	public void FindMapBounds()
 	{
@@ -104,16 +102,14 @@ public sealed class FLevel
 		// Mark all used sides
 		for (int i = 0; i < NumLines(); ++i)
 		{
-			fixed (IntLineDef* line = &Lines.Data[i])
-			{
-				if (line->sidenum[0] != Constants.MAX_INT)
-					used[line->sidenum[0]] = 1;
-				//else
-				//printf("   Line %d needs a front sidedef before it will run with ZDoom.\n", i);
+			ref var line = ref Lines.Data[i];
+			if (line.sidenum[0] != Constants.MAX_INT)
+				used[line.sidenum[0]] = 1;
+			//else
+			//printf("   Line %d needs a front sidedef before it will run with ZDoom.\n", i);
 
-				if (line->sidenum[1] != Constants.MAX_INT)
-					used[line->sidenum[1]] = 1;
-			}
+			if (line.sidenum[1] != Constants.MAX_INT)
+				used[line.sidenum[1]] = 1;
 		}
 
 		// Shift out any unused sides
@@ -140,13 +136,11 @@ public sealed class FLevel
 			// Renumber side references in lines
 			for (int i = 0; i < NumLines(); ++i)
 			{
-				fixed (IntLineDef* line = &Lines.Data[i])
-				{
-					if (line->sidenum[0] != Constants.MAX_INT)
-						line->sidenum[0] = remap[line->sidenum[0]];
-					if (line->sidenum[1] != Constants.MAX_INT)
-						line->sidenum[1] = remap[line->sidenum[1]];
-				}
+				ref var line = ref Lines.Data[i];
+				if (line.sidenum[0] != Constants.MAX_INT)
+					line.sidenum[0] = remap[line.sidenum[0]];
+				if (line.sidenum[1] != Constants.MAX_INT)
+					line.sidenum[1] = remap[line.sidenum[1]];
 			}
 		}
 	}

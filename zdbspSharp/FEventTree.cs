@@ -16,13 +16,14 @@ public sealed class FEvent
 
 public sealed class FEventTree
 {
-	FEvent Nil;
+	readonly FEvent Nil;
 	FEvent Root;
 	FEvent? Spare;
 
 	public FEventTree()
 	{
-		Root = null;
+		Nil = null!;
+		Root = null!;
 		Spare = null;
 	}
 
@@ -150,7 +151,7 @@ public sealed class FEventTree
 		}
 	}
 
-	public FEvent FindEvent(double key)
+	public FEvent? FindEvent(double key)
 	{
 		FEvent node = Root;
     

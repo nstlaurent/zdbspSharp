@@ -4,7 +4,12 @@
 	{
 		public int Compare(USegPtr? xptr, USegPtr? yptr)
 		{
-			FPrivSeg x = xptr.SegPtr;
+            if (xptr is null)
+                throw new ArgumentNullException("xptr should not be null");
+            if (yptr is null)
+                throw new ArgumentNullException("yptr should not be null");
+
+            FPrivSeg x = xptr.SegPtr;
 			FPrivSeg y = yptr.SegPtr;
 			// Segs are grouped into three categories in this order:
 			//
